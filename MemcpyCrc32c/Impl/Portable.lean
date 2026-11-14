@@ -1,8 +1,10 @@
 /-
 The portable CRC32C path: plain `UInt64` word operations and no carry-less
-multiply. Lookup tables are used only for the last 32 to 39 bytes and for
-inputs shorter than 40 bytes. Core-only executable code; proven equal to the
-reference in `MemcpyCrc32c.Portable`.
+multiply. Lookup tables are used only to finish each stream (its last 32
+bytes), for tail bytes, and for inputs shorter than 40 bytes. Inputs of 8 KiB
+and more are split into four streams folded in lockstep (`fold209_4x`).
+Core-only executable code; proven equal to the reference in
+`MemcpyCrc32c.Portable`.
 
 The kernel is Chorba-style reduction by the 6-term zero polynomial
 `Z = X^209 + X^144 + X^54 + X^39 + X^14 + 1` (`zero6_209`). Adding `v · Z`
@@ -207,7 +209,7 @@ compact in L1I with minimal register pressure. -/
     (hp : p.toNat + 32 ≤ a.size) (n1 n2 n3 n4 : UInt64) : UInt32 :=
   finish209 a hs p hp n1 n2 n3 n4
 
-/-- Single-stream reduction loop for medium inputs (`40 ≤ len < 4096`). -/
+/-- Single-stream reduction loop for medium inputs (`40 ≤ len < 8192`). -/
 def fold209 (a : @& ByteArray) (hs : a.size < USize.size) (i stop fin : USize)
     (_hi : i.toNat ≤ stop.toNat) (hal : (stop.toNat - i.toNat) % 8 = 0)
     (hstop : stop.toNat + 32 ≤ fin.toNat) (hfin : fin.toNat ≤ a.size)

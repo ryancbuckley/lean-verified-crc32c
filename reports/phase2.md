@@ -76,7 +76,7 @@ Same as Phase 1: only the Lean kernel and Mathlib's polynomial definitions for t
 Read from `.lake/build/ir/MemcpyCrc32c/Impl/Portable.c` and disassembled `.lake/build/ir/MemcpyCrc32c/Impl/Portable.c.o.export`:
 - `extendPortable` prologue is a single `stp x29, x30` frame setup with an immediate `a.size ≤ 0x7FFFFFFF` compare and zero callee-saved spills.
 - `fold209` is one 8-byte load plus ARM64 fused shifted-EOR instructions, zero bounds checks, zero calls, zero RC ops.
-- `fold209_4x` holds all 16 `UInt64` state words and stream pointers in GP registers (`x4..x28`, `x30`) with zero stack spills inside the hot loop (~1.53 instructions/byte).
+- `fold209_4x` holds all 16 `UInt64` state words and stream pointers in GP registers (`x4..x28`, `x30`) with zero stack spills inside the hot loop (58 instructions per 32 bytes).
 - `mulMod` and `powModU64` in `Impl/Arith.lean` compile to zero-stack-frame leaf loops (`mulMod` auto-unrolled 4× by clang).
 
 ## Spike for Phase 3 and 4 (not product code)
