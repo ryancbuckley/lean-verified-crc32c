@@ -37,6 +37,16 @@ theorem zero6_209 : G ∣ X ^ 209 + X ^ 144 + X ^ 54 + X ^ 39 + X ^ 14 + 1 := by
   have := congrArg (fun s => π (P s)) h
   simpa only [P_xor, map_add, ← π_X_pow, P_one, P_zero, map_one, map_zero, map_pow] using this
 
+/-- The lowest-degree 6-term multiple of `G` whose first gap exceeds two 64-bit
+words (`290 - 136 = 154 ≥ 128`), so a 5-word Chorba window shifts `n1' = n2`
+with zero bit operations on the leading word. -/
+theorem zero6_290 : G ∣ X ^ 290 + X ^ 136 + X ^ 113 + X ^ 107 + X ^ 32 + 1 := by
+  apply dvd_of_π_eq_zero
+  have h : powMod x1 290 ^^^ powMod x1 136 ^^^ powMod x1 113 ^^^ powMod x1 107 ^^^
+      powMod x1 32 ^^^ 0x80000000 = 0 := by decide +kernel
+  have := congrArg (fun s => π (P s)) h
+  simpa only [P_xor, map_add, ← π_X_pow, P_one, P_zero, map_one, map_zero, map_pow] using this
+
 /-- The lowest-degree 4-term multiple of `G` (search bound: degree ≤ 6000). -/
 theorem zero4_5275 : G ∣ X ^ 5275 + X ^ 4508 + X ^ 2751 + 1 := by
   apply dvd_of_π_eq_zero

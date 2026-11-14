@@ -34,6 +34,19 @@ theorem length_bytes (a : ByteArray) (i j : Nat) (hj : j ≤ a.size) :
 theorem bytes_whole (a : ByteArray) : bytes a 0 a.size = a.data.toList := by
   simp [bytes, ByteArray.size_data]
 
+theorem bytes_append (a : ByteArray) {i m j : Nat} (him : i ≤ m) (hmj : m ≤ j) (hj : j ≤ a.size) :
+    bytes a i m ++ bytes a m j = bytes a i j := by
+  obtain ⟨k, hk⟩ : ∃ k, m - i = k := ⟨_, rfl⟩
+  induction k generalizing i with
+  | zero => rw [bytes_of_le a (by omega), show i = m by omega, List.nil_append]
+  | succ k ih =>
+    rw [bytes_cons a i m (by omega) (by omega), bytes_cons a i j (by omega) hj,
+      List.cons_append, @ih (i + 1) (by omega) (by omega)]
+
+theorem rawExtend_append (s : UInt32) (xs ys : List UInt8) :
+    rawExtend s (xs ++ ys) = rawExtend (rawExtend s xs) ys := by
+  simp [rawExtend]
+
 theorem bytes_extract (a : ByteArray) (i j : Nat) :
     (a.extract i j).data.toList = bytes a i j := by
   simp [bytes, ByteArray.data_extract]
@@ -346,7 +359,70 @@ theorem R_window (v : UInt64) :
 noncomputable def W (n1 n2 n3 n4 : UInt64) : Q :=
   R n1 * π X ^ 192 + R n2 * π X ^ 128 + R n3 * π X ^ 64 + R n4
 
-/-! ### The reduction loop -/
+/-! ### The reduction loops (1-stream and 4-stream) -/
+
+/-- Stream invariant: pending 4-word window placed at byte offset `p` up to `fin`. -/
+noncomputable def streamInv (a : ByteArray) (p fin : Nat) (n1 n2 n3 n4 : UInt64) : Q :=
+  (W n1 n2 n3 n4 * π X ^ (8 * (fin - p - 32)) + π (msgPoly (bytes a p fin))) * π X ^ 32
+
+theorem step209_inv (a : ByteArray) (hs : a.size < USize.size) (p : USize) (fin : Nat)
+    (h : p.toNat + 40 ≤ fin) (hfin : fin ≤ a.size) (n1 n2 n3 n4 : UInt64) :
+    streamInv a (p.toNat + 8) fin
+      (next209_1 n2 (load64 a p hs (by omega) ^^^ n1))
+      (next209_2 n3 (load64 a p hs (by omega) ^^^ n1))
+      (next209_3 n4 (load64 a p hs (by omega) ^^^ n1))
+      (next209_4 (load64 a p hs (by omega) ^^^ n1)) =
+    streamInv a p.toNat fin n1 n2 n3 n4 := by
+  unfold streamInv next209_1 next209_2 next209_3 next209_4
+  obtain ⟨D, hD⟩ : ∃ D, fin = p.toNat + 8 + (32 + D) := ⟨fin - p.toNat - 40, by omega⟩
+  have hm := msgPoly_bytes_load a p hs (32 + D) (by omega)
+  generalize load64 a p hs _ = ld at hm ⊢
+  have hw := R_window (ld ^^^ n1)
+  rw [R_xor] at hw
+  have e1 : fin - (p.toNat + 8) - 32 = D := by omega
+  have e2 : fin - p.toNat - 32 = D + 8 := by omega
+  rw [e1, e2, hD, hm]
+  simp only [W, R_xor, map_add, map_mul, map_pow]
+  linear_combination (-(π X ^ (8 * D) * π X ^ 32)) * hw
+
+theorem finish209_spec (a : ByteArray) (hs : a.size < USize.size) (p : USize)
+    (hp : p.toNat + 32 ≤ a.size) (n1 n2 n3 n4 : UInt64) :
+    π (P (finish209 a hs p hp n1 n2 n3 n4)) =
+      streamInv a p.toNat (p.toNat + 32) n1 n2 n3 n4 := by
+  have h8 : (p + 8).toNat = p.toNat + 8 := usize_add_toNat p 8 (by omega)
+  have h16 : (p + 16).toNat = p.toNat + 16 := usize_add_toNat p 16 (by omega)
+  have h24 : (p + 24).toNat = p.toNat + 24 := usize_add_toNat p 24 (by omega)
+  have m0 := msgPoly_bytes_load a p hs 24 (by omega)
+  have m1 := msgPoly_bytes_load a (p + 8) hs 16 (by omega)
+  have m2 := msgPoly_bytes_load a (p + 16) hs 8 (by omega)
+  have m3 := msgPoly_bytes_load a (p + 24) hs 0 (by omega)
+  have f0 : p.toNat + 8 + 24 = p.toNat + 32 := by omega
+  have f1 : p.toNat + 16 + 16 = p.toNat + 32 := by omega
+  have f2 : p.toNat + 24 + 8 = p.toNat + 32 := by omega
+  have g1 : p.toNat + 8 + 8 = p.toNat + 16 := by omega
+  have g2 : p.toNat + 16 + 8 = p.toNat + 24 := by omega
+  have g3 : p.toNat + 24 + 8 = p.toNat + 32 := by omega
+  simp only [f0] at m0
+  simp only [h8, g1, f1] at m1
+  simp only [h16, g2, f2] at m2
+  simp only [h24, g3, bytes_of_le a (le_refl _), msgPoly] at m3
+  have esub : p.toNat + 32 - p.toNat - 32 = 0 := by omega
+  unfold finish209 streamInv
+  dsimp only
+  simp only [stepWordT0_eq, stepWordT_eq, π_P_stepWord, P_zero, map_zero, zero_mul, zero_add,
+    R_xor, esub, Nat.mul_zero, pow_zero, mul_one]
+  rw [m0, m1, m2, m3]
+  simp only [W, map_add, map_mul, map_pow, map_zero]
+  ring
+
+theorem finish209Out_spec (a : ByteArray) (hs : a.size < USize.size) (p : USize)
+    (hp : p.toNat + 32 ≤ a.size) (n1 n2 n3 n4 : UInt64) :
+    π (P (finish209Out a hs p hp n1 n2 n3 n4)) =
+      streamInv a p.toNat (p.toNat + 32) n1 n2 n3 n4 :=
+  finish209_spec a hs p hp n1 n2 n3 n4
+
+theorem π_P_x64 : π (P x64) = π X ^ 64 := by
+  rw [x64, π_P_powMod, P_x8, map_pow, ← pow_mul]
 
 /-- Loop invariant of `fold209`: the pending words, placed at byte offset `i`,
 plus the message from `i` on, determine the result. -/
@@ -355,8 +431,7 @@ theorem fold209_spec (a : ByteArray) (hs : a.size < USize.size) (stop fin : USiz
     ∀ (k : Nat) (i : USize) (hi : i.toNat ≤ stop.toNat) (hal : (stop.toNat - i.toNat) % 8 = 0)
       (n1 n2 n3 n4 : UInt64), stop.toNat - i.toNat = k →
       π (P (fold209 a hs i stop fin hi hal hstop hfin n1 n2 n3 n4)) =
-        (W n1 n2 n3 n4 * π X ^ (8 * (fin.toNat - i.toNat - 32)) +
-          π (msgPoly (bytes a i.toNat fin.toNat))) * π X ^ 32 := by
+        streamInv a i.toNat fin.toNat n1 n2 n3 n4 := by
   intro k
   induction k using Nat.strong_induction_on with
   | _ k ih =>
@@ -366,50 +441,129 @@ theorem fold209_spec (a : ByteArray) (hs : a.size < USize.size) (stop fin : USiz
     · have hlt' : i.toNat < stop.toNat := USize.lt_iff_toNat_lt.mp hlt
       have h8 : (i + 8).toNat = i.toNat + 8 := usize_add_toNat i 8 (by omega)
       simp only [hlt, ↓reduceDIte]
-      rw [ih (stop.toNat - (i + 8).toNat) (by omega) (i + 8) (by omega) (by omega) _ _ _ _ rfl]
-      obtain ⟨D, hD⟩ : ∃ D, fin.toNat = i.toNat + 8 + (32 + D) := ⟨fin.toNat - i.toNat - 40, by omega⟩
-      have hm := msgPoly_bytes_load a i hs (32 + D) (by omega)
-      generalize load64 a i hs _ = ld at hm ⊢
-      have hw := R_window (ld ^^^ n1)
-      rw [R_xor] at hw
-      have e1 : fin.toNat - (i + 8).toNat - 32 = D := by omega
-      have e2 : fin.toNat - i.toNat - 32 = D + 8 := by omega
-      rw [e1, e2, h8, hD, hm]
-      simp only [W, R_xor, map_add, map_mul, map_pow]
-      linear_combination (-(π X ^ (8 * D) * π X ^ 32)) * hw
+      rw [ih (stop.toNat - (i + 8).toNat) (by omega) (i + 8) (by omega) (by omega) _ _ _ _ rfl,
+        h8, step209_inv a hs i fin.toNat (by omega) hfin]
     · have heq : i.toNat = stop.toNat := by
         have : ¬ i.toNat < stop.toNat := fun h => hlt (USize.lt_iff_toNat_lt.mpr h)
         omega
-      have h8 : (stop + 8).toNat = stop.toNat + 8 := usize_add_toNat stop 8 (by omega)
-      have h16 : (stop + 16).toNat = stop.toNat + 16 := usize_add_toNat stop 16 (by omega)
-      have h24 : (stop + 24).toNat = stop.toNat + 24 := usize_add_toNat stop 24 (by omega)
       have h32 : (stop + 32).toNat = stop.toNat + 32 := usize_add_toNat stop 32 (by omega)
       simp only [hlt, ↓reduceDIte]
       obtain ⟨T, hT⟩ : ∃ T, fin.toNat = stop.toNat + 32 + T := ⟨fin.toNat - stop.toNat - 32, by omega⟩
-      have m0 := msgPoly_bytes_load a stop hs (24 + T) (by omega)
-      have m1 := msgPoly_bytes_load a (stop + 8) hs (16 + T) (by omega)
-      have m2 := msgPoly_bytes_load a (stop + 16) hs (8 + T) (by omega)
-      have m3 := msgPoly_bytes_load a (stop + 24) hs T (by omega)
-      have f0 : stop.toNat + 8 + (24 + T) = fin.toNat := by omega
-      have f1 : stop.toNat + 16 + (16 + T) = fin.toNat := by omega
-      have f2 : stop.toNat + 24 + (8 + T) = fin.toNat := by omega
-      have f3 : stop.toNat + 32 + T = fin.toNat := by omega
-      have g1 : stop.toNat + 8 + 8 = stop.toNat + 16 := by omega
-      have g2 : stop.toNat + 16 + 8 = stop.toNat + 24 := by omega
-      have g3 : stop.toNat + 24 + 8 = stop.toNat + 32 := by omega
-      simp only [f0] at m0
-      simp only [h8, g1, f1] at m1
-      simp only [h16, g2, f2] at m2
-      simp only [h24, g3, f3] at m3
       have hlen := length_bytes a (stop.toNat + 32) fin.toNat hfin
+      have hb := bytes_append a (i := stop.toNat) (m := stop.toNat + 32) (j := fin.toNat)
+        (by omega) (by omega) hfin
       have eT : fin.toNat - stop.toNat - 32 = T := by omega
       have eL : fin.toNat - (stop.toNat + 32) = T := by omega
-      rw [bytesLoop_eq a hs fin hfin _ _ _ rfl, π_P_rawExtend, h32, hlen]
-      simp only [stepWordT0_eq, stepWordT_eq, π_P_stepWord, P_zero, map_zero, zero_mul, zero_add,
-        R_xor, heq, eT, eL]
-      rw [m0, m1, m2, m3]
-      simp only [W, map_add, map_mul, map_pow]
+      have esub0 : stop.toNat + 32 - stop.toNat - 32 = 0 := by omega
+      rw [bytesLoop_eq a hs fin hfin _ _ _ rfl, π_P_rawExtend, h32, hlen, finish209_spec]
+      unfold streamInv
+      rw [heq, ← hb, msgPoly_append, length_bytes a (stop.toNat + 32) fin.toNat hfin,
+        esub0, eT, eL]
+      simp only [Nat.mul_zero, pow_zero, mul_one, map_add, map_mul, map_pow]
       ring
+
+/-- Loop invariant of `fold209_4x`: all four stream invariants advance in lockstep. -/
+theorem fold209_4x_spec (a : ByteArray) (hs : a.size < USize.size) (stop L L2 L3 : USize)
+    (hLm : L.toNat % 8 = 0) (hL2 : L2.toNat = 2 * L.toNat) (hL3 : L3.toNat = 3 * L.toNat)
+    (hL : stop.toNat + 3 * L.toNat + 32 ≤ a.size) :
+    ∀ (k : Nat) (i : USize) (hi : i.toNat ≤ stop.toNat) (hal : (stop.toNat - i.toNat) % 8 = 0)
+      (a1 a2 a3 a4 b1 b2 b3 b4 c1 c2 c3 c4 d1 d2 d3 d4 : UInt64),
+      stop.toNat - i.toNat = k →
+      π (P (fold209_4x a hs i stop L L2 L3 hi hal hLm hL2 hL3 hL
+          a1 a2 a3 a4 b1 b2 b3 b4 c1 c2 c3 c4 d1 d2 d3 d4)) =
+        (((streamInv a i.toNat (stop.toNat + 32) a1 a2 a3 a4 * π X ^ (8 * L.toNat) +
+            streamInv a (i.toNat + L.toNat) (stop.toNat + L.toNat + 32) b1 b2 b3 b4) *
+              π X ^ (8 * L.toNat) +
+            streamInv a (i.toNat + 2 * L.toNat) (stop.toNat + 2 * L.toNat + 32) c1 c2 c3 c4) *
+              π X ^ (8 * L.toNat) +
+            streamInv a (i.toNat + 3 * L.toNat) (stop.toNat + 3 * L.toNat + 32) d1 d2 d3 d4) := by
+  intro k
+  induction k using Nat.strong_induction_on with
+  | _ k ih =>
+    intro i hi hal a1 a2 a3 a4 b1 b2 b3 b4 c1 c2 c3 c4 d1 d2 d3 d4 hk
+    have hpow : 2 ^ System.Platform.numBits = USize.size := rfl
+    rw [fold209_4x]
+    by_cases hlt : i < stop
+    · have hlt' : i.toNat < stop.toNat := USize.lt_iff_toNat_lt.mp hlt
+      have h8 : (i + 8).toNat = i.toNat + 8 := usize_add_toNat i 8 (by omega)
+      have hi1 : (i + L).toNat = i.toNat + L.toNat := by
+        rw [USize.toNat_add]; exact Nat.mod_eq_of_lt (by omega)
+      have hi2 : (i + L2).toNat = i.toNat + 2 * L.toNat := by
+        rw [USize.toNat_add, hL2]; exact Nat.mod_eq_of_lt (by omega)
+      have hi3 : (i + L3).toNat = i.toNat + 3 * L.toNat := by
+        rw [USize.toNat_add, hL3]; exact Nat.mod_eq_of_lt (by omega)
+      have sh1 : i.toNat + 8 + L.toNat = (i + L).toNat + 8 := by omega
+      have sh2 : i.toNat + 8 + 2 * L.toNat = (i + L2).toNat + 8 := by omega
+      have sh3 : i.toNat + 8 + 3 * L.toNat = (i + L3).toNat + 8 := by omega
+      simp only [hlt, ↓reduceDIte]
+      rw [ih (stop.toNat - (i + 8).toNat) (by omega) (i + 8) (by omega) (by omega)
+        _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ rfl]
+      rw [h8, sh1, sh2, sh3,
+        step209_inv a hs i (stop.toNat + 32) (by omega) (by omega),
+        step209_inv a hs (i + L) (stop.toNat + L.toNat + 32) (by omega) (by omega),
+        step209_inv a hs (i + L2) (stop.toNat + 2 * L.toNat + 32) (by omega) (by omega),
+        step209_inv a hs (i + L3) (stop.toNat + 3 * L.toNat + 32) (by omega) (by omega),
+        hi1, hi2, hi3]
+    · have heq : i.toNat = stop.toNat := by
+        have : ¬ i.toNat < stop.toNat := fun h => hlt (USize.lt_iff_toNat_lt.mpr h)
+        omega
+      have hs1 : (stop + L).toNat = stop.toNat + L.toNat := by
+        rw [USize.toNat_add]; exact Nat.mod_eq_of_lt (by omega)
+      have hs2 : (stop + L2).toNat = stop.toNat + 2 * L.toNat := by
+        rw [USize.toNat_add, hL2]; exact Nat.mod_eq_of_lt (by omega)
+      have hs3 : (stop + L3).toNat = stop.toNat + 3 * L.toNat := by
+        rw [USize.toNat_add, hL3]; exact Nat.mod_eq_of_lt (by omega)
+      have e8 : (8 : USize).toNat = 8 := by simp
+      have hf : π (P (powModU64 x64 0x80000000 (L / 8).toUInt64)) = π X ^ (8 * L.toNat) := by
+        rw [powModU64_eq_go, usize_toUInt64_toNat, USize.toNat_div, e8,
+          π_P_powMod_go, P_one, map_one, one_mul, π_P_x64, ← pow_mul,
+          show 64 * (L.toNat / 8) = 8 * L.toNat by omega]
+      simp only [hlt, ↓reduceDIte, P_xor, map_add, π_P_mulMod, hf,
+        finish209Out_spec, hs1, hs2, hs3, heq]
+
+theorem fold209_4x_entry (s : UInt32) (a : ByteArray) (hs : a.size < USize.size)
+    (uoff stop L L2 L3 : USize)
+    (hi : uoff.toNat ≤ stop.toNat) (hal : (stop.toNat - uoff.toNat) % 8 = 0)
+    (hLm : L.toNat % 8 = 0) (hL2 : L2.toNat = 2 * L.toNat) (hL3 : L3.toNat = 3 * L.toNat)
+    (hL : stop.toNat + 3 * L.toNat + 32 ≤ a.size)
+    (hbody : stop.toNat + 32 = uoff.toNat + L.toNat) :
+    fold209_4x a hs uoff stop L L2 L3 hi hal hLm hL2 hL3 hL
+      s.toUInt64 0 0 0  0 0 0 0  0 0 0 0  0 0 0 0 =
+    rawExtend s (bytes a uoff.toNat (uoff.toNat + 4 * L.toNat)) := by
+  apply eq_of_π_P
+  rw [fold209_4x_spec a hs stop L L2 L3 hLm hL2 hL3 hL _ uoff hi hal
+    _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ rfl]
+  let p0 := uoff.toNat
+  have f1 : stop.toNat + 32 = p0 + L.toNat := hbody
+  have f2 : stop.toNat + L.toNat + 32 = p0 + 2 * L.toNat := by omega
+  have f3 : stop.toNat + 2 * L.toNat + 32 = p0 + 3 * L.toNat := by omega
+  have f4 : stop.toNat + 3 * L.toNat + 32 = p0 + 4 * L.toNat := by omega
+  have hS0 : streamInv a p0 (p0 + L.toNat) s.toUInt64 0 0 0 =
+      π (P (rawExtend s (bytes a p0 (p0 + L.toNat)))) := by
+    unfold streamInv
+    obtain ⟨M, hM⟩ : ∃ M, L.toNat = 32 + M := ⟨L.toNat - 32, by omega⟩
+    have esub : p0 + L.toNat - p0 - 32 = M := by omega
+    have hlen : (bytes a p0 (p0 + L.toNat)).length = L.toNat := by
+      rw [length_bytes a p0 (p0 + L.toNat) (by omega)]; omega
+    rw [π_P_rawExtend, hlen, esub, hM]
+    simp only [W, R, R_zero, polyR_toUInt64, map_mul, map_pow, zero_mul, add_zero,
+      Nat.mul_add, pow_add]
+    ring
+  have hZero (x y : Nat) : streamInv a x y 0 0 0 0 = π (msgPoly (bytes a x y)) * π X ^ 32 := by
+    simp [streamInv, W, R_zero]
+  have step (u : UInt32) (x y : Nat) (hlen : (bytes a x y).length = L.toNat) :
+      π (P u) * π X ^ (8 * L.toNat) + π (msgPoly (bytes a x y)) * π X ^ 32 =
+        π (P (rawExtend u (bytes a x y))) := by
+    rw [π_P_rawExtend, hlen]
+  rw [f1, f2, f3, f4, hS0, hZero, hZero, hZero,
+    step _ (p0 + L.toNat) (p0 + 2 * L.toNat) (by rw [length_bytes a _ _ (by omega)]; omega),
+    step _ (p0 + 2 * L.toNat) (p0 + 3 * L.toNat) (by rw [length_bytes a _ _ (by omega)]; omega),
+    step _ (p0 + 3 * L.toNat) (p0 + 4 * L.toNat) (by rw [length_bytes a _ _ (by omega)]; omega)]
+  simp only [← rawExtend_append,
+    bytes_append a (i := p0) (m := p0 + L.toNat) (j := p0 + 2 * L.toNat) (by omega) (by omega) (by omega),
+    bytes_append a (i := p0) (m := p0 + 2 * L.toNat) (j := p0 + 3 * L.toNat) (by omega) (by omega) (by omega),
+    bytes_append a (i := p0) (m := p0 + 3 * L.toNat) (j := p0 + 4 * L.toNat) (by omega) (by omega) (by omega)]
+  rfl
 
 /-! ### `fast_eq_ref` for the portable path -/
 
@@ -421,20 +575,57 @@ theorem rawExtendPortableUSize_eq (s : UInt32) (a : ByteArray) (hs : a.size < US
   have hpow : 2 ^ System.Platform.numBits = USize.size := rfl
   have hfin : (uoff + ulen).toNat = uoff.toNat + ulen.toNat := by
     rw [USize.toNat_add]; exact Nat.mod_eq_of_lt (by omega)
-  by_cases h40 : 40 ≤ ulen
-  · have e40 : (40 : USize).toNat = 40 := by simp
-    have h40' : 40 ≤ ulen.toNat := by have := USize.le_iff_toNat_le.mp h40; omega
-    simp only [h40, ↓reduceDIte]
-    apply eq_of_π_P
-    rw [fold209_spec a hs _ _ _ _ _ _ _ _ _ _ _ _ rfl, π_P_rawExtend, hfin,
-      length_bytes a uoff.toNat (uoff.toNat + ulen.toNat) h]
-    have e : uoff.toNat + ulen.toNat - uoff.toNat - 32 = ulen.toNat - 32 := by omega
-    have e' : uoff.toNat + ulen.toNat - uoff.toNat = 32 + (ulen.toNat - 32) := by omega
-    rw [e, e']
-    simp only [W, R, R_zero, polyR_toUInt64, map_mul, map_pow, zero_mul, add_zero]
-    ring
-  · simp only [h40, ↓reduceDIte]
-    rw [sliceLoop_eq a hs _ _ _ _ _ _ rfl, hfin]
+  by_cases h4x : 8192 ≤ ulen
+  · have e8192 := usize_8192_toNat
+    have h4x' : 8192 ≤ ulen.toNat := by have := USize.le_iff_toNat_le.mp h4x; omega
+    have e32 : (32 : USize).toNat = 32 := by simp
+    have e8 : (8 : USize).toNat = 8 := by simp
+    have e4 : (4 : USize).toNat = 4 := by simp
+    have e3 : (3 : USize).toNat = 3 := by simp
+    have e2 : (2 : USize).toNat = 2 := by simp
+    let ws := ulen / 32
+    have hws : ws.toNat = ulen.toNat / 32 := by rw [USize.toNat_div, e32]
+    let L := ws * 8
+    have hL : L.toNat = ws.toNat * 8 := by
+      rw [USize.toNat_mul, e8]; exact Nat.mod_eq_of_lt (by omega)
+    let L2 := 2 * L
+    have hL2 : L2.toNat = 2 * L.toNat := by
+      rw [USize.toNat_mul, e2]; exact Nat.mod_eq_of_lt (by omega)
+    let L3 := 3 * L
+    have hL3 : L3.toNat = 3 * L.toNat := by
+      rw [USize.toNat_mul, e3]; exact Nat.mod_eq_of_lt (by omega)
+    let body := (ws - 4) * 8
+    have hsub : (ws - 4).toNat = ws.toNat - 4 := by
+      rw [USize.toNat_sub_of_le ws 4 (USize.le_iff_toNat_le.mpr (by omega)), e4]
+    have hbody : body.toNat = (ws.toNat - 4) * 8 := by
+      rw [USize.toNat_mul, hsub, e8]; exact Nat.mod_eq_of_lt (by omega)
+    have hstop : (uoff + body).toNat = uoff.toNat + body.toNat := by
+      rw [USize.toNat_add]; exact Nat.mod_eq_of_lt (by omega)
+    let L4 := 4 * L
+    have hL4 : L4.toNat = 4 * L.toNat := by
+      rw [USize.toNat_mul, e4]; exact Nat.mod_eq_of_lt (by omega)
+    have htail : (uoff + L4).toNat = uoff.toNat + 4 * L.toNat := by
+      rw [USize.toNat_add, hL4]; exact Nat.mod_eq_of_lt (by omega)
+    simp only [h4x, ↓reduceDIte]
+    rw [sliceLoop_eq a hs _ _ _ _ _ _ rfl,
+      fold209_4x_entry s a hs uoff (uoff + body) L L2 L3 _ _ _ hL2 hL3 _ (by omega),
+      htail, hfin, ← rawExtend_append, bytes_append a (by omega) (by omega) h]
+  · simp only [h4x, ↓reduceDIte]
+    by_cases h40 : 40 ≤ ulen
+    · have e40 : (40 : USize).toNat = 40 := by simp
+      have h40' : 40 ≤ ulen.toNat := by have := USize.le_iff_toNat_le.mp h40; omega
+      simp only [h40, ↓reduceDIte]
+      apply eq_of_π_P
+      rw [fold209_spec a hs _ _ _ _ _ _ _ _ _ _ _ _ rfl, π_P_rawExtend, hfin,
+        length_bytes a uoff.toNat (uoff.toNat + ulen.toNat) h]
+      unfold streamInv
+      have e : uoff.toNat + ulen.toNat - uoff.toNat - 32 = ulen.toNat - 32 := by omega
+      have e' : uoff.toNat + ulen.toNat - uoff.toNat = 32 + (ulen.toNat - 32) := by omega
+      rw [e, e']
+      simp only [W, R, R_zero, polyR_toUInt64, map_mul, map_pow, zero_mul, add_zero]
+      ring
+    · simp only [h40, ↓reduceDIte]
+      rw [sliceLoop_eq a hs _ _ _ _ _ _ rfl, hfin]
 
 /-- The portable path computes the reference update on any in-bounds range. -/
 theorem rawExtendPortable_eq (s : UInt32) (a : ByteArray) (off len : Nat)

@@ -11,11 +11,15 @@ later in the stream, which lands in the next four words. Those four pending
 words are the whole state, so the loop reads memory and never writes it.
 -/
 import MemcpyCrc32c.Impl.Reference
+import MemcpyCrc32c.Impl.Arith
 
 namespace Crc32c
 
 theorem usize_size_gt : 0x80000000 ≤ USize.size := by
   rcases System.Platform.numBits_eq with h | h <;> simp [USize.size, h]
+
+theorem usize_8192_toNat : (8192 : USize).toNat = 8192 := by
+  simp
 
 theorem usize_ofNat_lt_8 (k : Nat) (hk : k < 8) : (USize.ofNat k).toNat < 8 := by
   have := usize_size_gt
@@ -25,6 +29,9 @@ theorem usize_ofNat_lt_8 (k : Nat) (hk : k < 8) : (USize.ofNat k).toNat < 8 := b
 theorem usize_add_toNat (i : USize) (k : Nat) (h : i.toNat + k < USize.size) :
     (i + USize.ofNat k).toNat = i.toNat + k := by
   rw [USize.toNat_add, USize.toNat_ofNat_of_lt' (by omega)]; exact Nat.mod_eq_of_lt h
+
+theorem usize_toUInt64_toNat (x : USize) : x.toUInt64.toNat = x.toNat := by
+  simp
 
 /-- A little-endian 32-bit word from its bytes. -/
 @[inline] def word32 (b0 b1 b2 b3 : UInt8) : UInt32 :=
@@ -174,9 +181,33 @@ def sliceLoop (a : @& ByteArray) (hs : a.size < USize.size) (i fin : USize)
 termination_by fin.toNat - i.toNat
 decreasing_by omega
 
-/-- The reduction loop. Words `a[i, stop)` are folded into the four pending
-words; then the last four words and the tail bytes `a[stop + 32, fin)` are
-finished by table lookup. -/
+/-- Single-word Chorba shift-XOR updates for `Z = X^209 + X^144 + X^54 + X^39 + X^14 + 1`. -/
+@[inline] def next209_1 (n2 v : UInt64) : UInt64 := n2 ^^^ (v <<< 1)
+@[inline] def next209_2 (n3 v : UInt64) : UInt64 := n3 ^^^ (v >>> 63) ^^^ (v <<< 27) ^^^ (v <<< 42)
+@[inline] def next209_3 (n4 v : UInt64) : UInt64 := n4 ^^^ (v >>> 37) ^^^ (v >>> 22) ^^^ (v <<< 3) ^^^ (v <<< 17)
+@[inline] def next209_4 (v : UInt64) : UInt64 := (v >>> 61) ^^^ (v >>> 47)
+
+/-- `X^64 mod G`, precomputed once from `x8` for combining multi-stream words. -/
+def x64 : UInt32 := powMod x8 8
+
+/-- Fold the final four 64-bit words at `a[p, p + 32)` with pending window `(n1, n2, n3, n4)`. -/
+@[inline] def finish209 (a : @& ByteArray) (hs : a.size < USize.size) (p : USize)
+    (hp : p.toNat + 32 ≤ a.size) (n1 n2 n3 n4 : UInt64) : UInt32 :=
+  have h8 : (p + 8).toNat = p.toNat + 8 := usize_add_toNat p 8 (by omega)
+  have h16 : (p + 16).toNat = p.toNat + 16 := usize_add_toNat p 16 (by omega)
+  have h24 : (p + 24).toNat = p.toNat + 24 := usize_add_toNat p 24 (by omega)
+  let s := stepWordT0 (load64 a p hs (by omega) ^^^ n1)
+  let s := stepWordT s (load64 a (p + 8) hs (by omega) ^^^ n2)
+  let s := stepWordT s (load64 a (p + 16) hs (by omega) ^^^ n3)
+  stepWordT s (load64 a (p + 24) hs (by omega) ^^^ n4)
+
+/-- Out-of-line wrapper around `finish209` for `fold209_4x` so its hot loop stays
+compact in L1I with minimal register pressure. -/
+@[noinline] def finish209Out (a : @& ByteArray) (hs : a.size < USize.size) (p : USize)
+    (hp : p.toNat + 32 ≤ a.size) (n1 n2 n3 n4 : UInt64) : UInt32 :=
+  finish209 a hs p hp n1 n2 n3 n4
+
+/-- Single-stream reduction loop for medium inputs (`40 ≤ len < 4096`). -/
 def fold209 (a : @& ByteArray) (hs : a.size < USize.size) (i stop fin : USize)
     (_hi : i.toNat ≤ stop.toNat) (hal : (stop.toNat - i.toNat) % 8 = 0)
     (hstop : stop.toNat + 32 ≤ fin.toNat) (hfin : fin.toNat ≤ a.size)
@@ -186,20 +217,58 @@ def fold209 (a : @& ByteArray) (hs : a.size < USize.size) (i stop fin : USize)
     have h8 : (i + 8).toNat = i.toNat + 8 := usize_add_toNat i 8 (by omega)
     let v := load64 a i hs (by omega) ^^^ n1
     fold209 a hs (i + 8) stop fin (by omega) (by omega) hstop hfin
-      (n2 ^^^ (v <<< 1))
-      (n3 ^^^ (v >>> 63) ^^^ (v <<< 27) ^^^ (v <<< 42))
-      (n4 ^^^ (v >>> 37) ^^^ (v >>> 22) ^^^ (v <<< 3) ^^^ (v <<< 17))
-      ((v >>> 61) ^^^ (v >>> 47))
+      (next209_1 n2 v) (next209_2 n3 v) (next209_3 n4 v) (next209_4 v)
   else
-    have h8 : (stop + 8).toNat = stop.toNat + 8 := usize_add_toNat stop 8 (by omega)
-    have h16 : (stop + 16).toNat = stop.toNat + 16 := usize_add_toNat stop 16 (by omega)
-    have h24 : (stop + 24).toNat = stop.toNat + 24 := usize_add_toNat stop 24 (by omega)
     have h32 : (stop + 32).toNat = stop.toNat + 32 := usize_add_toNat stop 32 (by omega)
-    let s := stepWordT0 (load64 a stop hs (by omega) ^^^ n1)
-    let s := stepWordT s (load64 a (stop + 8) hs (by omega) ^^^ n2)
-    let s := stepWordT s (load64 a (stop + 16) hs (by omega) ^^^ n3)
-    let s := stepWordT s (load64 a (stop + 24) hs (by omega) ^^^ n4)
+    let s := finish209 a hs stop (by omega) n1 n2 n3 n4
     bytesLoop a (stop + 32) fin hfin s
+termination_by stop.toNat - i.toNat
+decreasing_by omega
+
+/-- Four-stream interleaved Chorba reduction loop. Processes four independent
+contiguous streams `a[uoff + r * L, uoff + (r + 1) * L)` (`r = 0..3`, where
+`L = (stop - uoff) + 32` is a multiple of 8 bytes) in lockstep to break the
+2-cycle `n1' = n2 ^^^ (v <<< 1)` recurrence, keeping all 16 state words in GP
+registers with zero scratch memory, then combines the four `UInt32` stream CRCs
+algebraically via `mulMod`. -/
+def fold209_4x (a : @& ByteArray) (hs : a.size < USize.size) (i stop L L2 L3 : USize)
+    (_hi : i.toNat ≤ stop.toNat) (hal : (stop.toNat - i.toNat) % 8 = 0)
+    (hLm : L.toNat % 8 = 0) (hL2 : L2.toNat = 2 * L.toNat) (hL3 : L3.toNat = 3 * L.toNat)
+    (hL : stop.toNat + 3 * L.toNat + 32 ≤ a.size)
+    (a1 a2 a3 a4 b1 b2 b3 b4 c1 c2 c3 c4 d1 d2 d3 d4 : UInt64) : UInt32 :=
+  if hlt : i < stop then
+    have hpow : 2 ^ System.Platform.numBits = USize.size := rfl
+    have hlt' : i.toNat < stop.toNat := USize.lt_iff_toNat_lt.mp hlt
+    have h8 : (i + 8).toNat = i.toNat + 8 := usize_add_toNat i 8 (by omega)
+    have hi1 : (i + L).toNat = i.toNat + L.toNat := by
+      rw [USize.toNat_add]; exact Nat.mod_eq_of_lt (by omega)
+    have hi2 : (i + L2).toNat = i.toNat + 2 * L.toNat := by
+      rw [USize.toNat_add, hL2]; exact Nat.mod_eq_of_lt (by omega)
+    have hi3 : (i + L3).toNat = i.toNat + 3 * L.toNat := by
+      rw [USize.toNat_add, hL3]; exact Nat.mod_eq_of_lt (by omega)
+    let va := load64 a i hs (by omega) ^^^ a1
+    let vb := load64 a (i + L) hs (by omega) ^^^ b1
+    let vc := load64 a (i + L2) hs (by omega) ^^^ c1
+    let vd := load64 a (i + L3) hs (by omega) ^^^ d1
+    fold209_4x a hs (i + 8) stop L L2 L3 (by omega) (by omega) hLm hL2 hL3 hL
+      (next209_1 a2 va) (next209_2 a3 va) (next209_3 a4 va) (next209_4 va)
+      (next209_1 b2 vb) (next209_2 b3 vb) (next209_3 b4 vb) (next209_4 vb)
+      (next209_1 c2 vc) (next209_2 c3 vc) (next209_3 c4 vc) (next209_4 vc)
+      (next209_1 d2 vd) (next209_2 d3 vd) (next209_3 d4 vd) (next209_4 vd)
+  else
+    have hpow : 2 ^ System.Platform.numBits = USize.size := rfl
+    have hs1 : (stop + L).toNat = stop.toNat + L.toNat := by
+      rw [USize.toNat_add]; exact Nat.mod_eq_of_lt (by omega)
+    have hs2 : (stop + L2).toNat = stop.toNat + 2 * L.toNat := by
+      rw [USize.toNat_add, hL2]; exact Nat.mod_eq_of_lt (by omega)
+    have hs3 : (stop + L3).toNat = stop.toNat + 3 * L.toNat := by
+      rw [USize.toNat_add, hL3]; exact Nat.mod_eq_of_lt (by omega)
+    let sa := finish209Out a hs stop (by omega) a1 a2 a3 a4
+    let sb := finish209Out a hs (stop + L) (by omega) b1 b2 b3 b4
+    let sc := finish209Out a hs (stop + L2) (by omega) c1 c2 c3 c4
+    let sd := finish209Out a hs (stop + L3) (by omega) d1 d2 d3 d4
+    let f := powModU64 x64 0x80000000 (L / 8).toUInt64
+    mulMod (mulMod (mulMod sa f ^^^ sb) f ^^^ sc) f ^^^ sd
 termination_by stop.toNat - i.toNat
 decreasing_by omega
 
@@ -209,7 +278,42 @@ decreasing_by omega
   have hpow : 2 ^ System.Platform.numBits = USize.size := rfl
   have hfin : (uoff + ulen).toNat = uoff.toNat + ulen.toNat := by
     rw [USize.toNat_add]; exact Nat.mod_eq_of_lt (by omega)
-  if h40 : 40 ≤ ulen then
+  if h4x : 8192 ≤ ulen then
+    have e8192 := usize_8192_toNat
+    have h4x' : 8192 ≤ ulen.toNat := by have := USize.le_iff_toNat_le.mp h4x; omega
+    have e32 : (32 : USize).toNat = 32 := by simp
+    have e8 : (8 : USize).toNat = 8 := by simp
+    have e4 : (4 : USize).toNat = 4 := by simp
+    have e3 : (3 : USize).toNat = 3 := by simp
+    have e2 : (2 : USize).toNat = 2 := by simp
+    let ws := ulen / 32
+    have hws : ws.toNat = ulen.toNat / 32 := by rw [USize.toNat_div, e32]
+    let L := ws * 8
+    have hL : L.toNat = ws.toNat * 8 := by
+      rw [USize.toNat_mul, e8]; exact Nat.mod_eq_of_lt (by omega)
+    let L2 := 2 * L
+    have hL2 : L2.toNat = 2 * L.toNat := by
+      rw [USize.toNat_mul, e2]; exact Nat.mod_eq_of_lt (by omega)
+    let L3 := 3 * L
+    have hL3 : L3.toNat = 3 * L.toNat := by
+      rw [USize.toNat_mul, e3]; exact Nat.mod_eq_of_lt (by omega)
+    let body := (ws - 4) * 8
+    have hsub : (ws - 4).toNat = ws.toNat - 4 := by
+      rw [USize.toNat_sub_of_le ws 4 (USize.le_iff_toNat_le.mpr (by omega)), e4]
+    have hbody : body.toNat = (ws.toNat - 4) * 8 := by
+      rw [USize.toNat_mul, hsub, e8]; exact Nat.mod_eq_of_lt (by omega)
+    have hstop : (uoff + body).toNat = uoff.toNat + body.toNat := by
+      rw [USize.toNat_add]; exact Nat.mod_eq_of_lt (by omega)
+    let L4 := 4 * L
+    have hL4 : L4.toNat = 4 * L.toNat := by
+      rw [USize.toNat_mul, e4]; exact Nat.mod_eq_of_lt (by omega)
+    have htail : (uoff + L4).toNat = uoff.toNat + 4 * L.toNat := by
+      rw [USize.toNat_add, hL4]; exact Nat.mod_eq_of_lt (by omega)
+    let s4 := fold209_4x a hs uoff (uoff + body) L L2 L3
+      (by omega) (by omega) (by omega) hL2 hL3 (by omega)
+      s.toUInt64 0 0 0  0 0 0 0  0 0 0 0  0 0 0 0
+    sliceLoop a hs (uoff + L4) (uoff + ulen) (by omega) (by omega) s4
+  else if h40 : 40 ≤ ulen then
     have e40 : (40 : USize).toNat = 40 := by simp
     have h40' : 40 ≤ ulen.toNat := by have := USize.le_iff_toNat_le.mp h40; omega
     have e8 : (8 : USize).toNat = 8 := by simp
