@@ -16,3 +16,6 @@ lean_lib SimdModels where
 lean_exe hw_diff where
   root := `tests.HwDiff
   moreLeancArgs := shimArgs
+
+lean_exe asl_check where
+  root := `tests.AslCheck

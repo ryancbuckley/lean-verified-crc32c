@@ -6,12 +6,12 @@ the vendor's authoritative semantics, and differential testing on hardware.
 
 | Binding | AArch64 hardware | x86-64 | Authoritative cross-check |
 | --- | --- | --- | --- |
-| `crc32c_u8` | pass | pass under Rosetta only | outstanding |
-| `crc32c_u16` | pass | pass under Rosetta only | outstanding |
-| `crc32c_u32` | pass | pass under Rosetta only | outstanding |
-| `crc32c_u64` | pass | pass under Rosetta only | outstanding |
-| `clmulLo` | pass | pass under Rosetta only | outstanding |
-| `clmulHi` | pass | pass under Rosetta only | outstanding |
+| `crc32c_u8` | pass | pass under Rosetta only | Arm: pass (ASLp). Intel: outstanding |
+| `crc32c_u16` | pass | pass under Rosetta only | Arm: pass (ASLp). Intel: outstanding |
+| `crc32c_u32` | pass | pass under Rosetta only | Arm: pass (ASLp). Intel: outstanding |
+| `crc32c_u64` | pass | pass under Rosetta only | Arm: pass (ASLp). Intel: outstanding |
+| `clmulLo` | pass | pass under Rosetta only | Arm: pass (ASLp). Intel: outstanding |
+| `clmulHi` | pass | pass under Rosetta only | Arm: pass (ASLp). Intel: outstanding |
 
 ## AArch64 hardware differential test
 
@@ -40,10 +40,32 @@ outputs are compared byte for byte.
 
 ## Authoritative cross-check
 
-Outstanding for both vendors.
+### Arm: done
 
-- Arm: the models are transcribed in the shape of the ASL pseudocode
-  (`CRC32C*`, `Poly32Mod2`, `PolynomialMult`), quoted in `Models.lean`. A
-  mechanical check against Arm's machine-readable ASL through ASLp is in
-  progress.
-- Intel: to be checked against the Intrinsics Guide pseudocode.
+The real A64 opcodes are executed in ASLp (UQ-PAC/aslp, commit `92e4fd94`),
+which interprets Arm's machine-readable ASL specification, and the results
+are compared with the Lean models.
+
+- `validation/aslp_vectors.py` drives ASLp: it sets the source registers,
+  executes `crc32cb/ch/cw/cx w0, w1, w2` and `pmull v0.1q, v1.1d, v2.1d`
+  (opcodes `1ac25020`, `1ac25420`, `1ac25820`, `9ac25c20`, `0ee2e020`), and
+  reads the destination register. The unused upper register bits are filled
+  with random data, so the check also covers "the instruction ignores them".
+- `tests/AslCheck.lean` (`asl_check`) compares each vector with the model.
+- Result: 100,720 vectors (144 edge pairs and 20,000 random pairs per opcode),
+  no mismatch. A 2,220-vector subset is kept in `asl_vectors_arm.txt` as a
+  regression input that needs no OCaml toolchain.
+- ASLp's symbolic expansion of the CRC opcodes (`:sem`) also has the same
+  structure as the model: the constant `0x1EDC6F41`, the bit-test-and-XOR loop
+  from the top bit down to bit 32, and the final bit reversal.
+- `PMULL` on 64-bit lanes is an optional feature in the specification
+  ("Has 128-bit form of PMULL instructions"); the check enables it.
+
+Trusted here: ASLp's interpreter, and that its bundled specification is
+Arm's.
+
+### Intel: outstanding
+
+To be checked against the Intrinsics Guide pseudocode. Until then the x86-64
+bindings rest on the Rosetta cross-check above and on sharing a model with
+the Arm instructions.
