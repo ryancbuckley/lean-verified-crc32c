@@ -67,3 +67,11 @@ As Phase 1, plus: the Lean compiler for the `bv_decide` certificate check (two l
 
 - **Does Chorba's gain hold for CRC32C?** Yes on this machine, despite needing six terms where CRC32 needs five: 3.2× over slicing-by-8 from 4 KiB up, against the paper's roughly 2× for CRC32.
 - **Crossover.** Between 16 and 64 bytes against slicing-by-8.
+
+## Emitted code, checked
+
+Read from `.lake/build/ir/MemcpyCrc32c/Impl/Portable.c` and the disassembled object. The reduction loop is one 8-byte load (`ldur`), fourteen shift/XOR register operations and the loop branch: no bounds checks, no calls, no reference counting. Table lookups in the finisher are direct loads with no bounds checks.
+
+## Spike for Phase 3 and 4 (not product code)
+
+`spike/HwSpike.lean` calls the AArch64 CRC32C instruction from a Lean loop through `@[extern c inline "__builtin_arm_crc32cd(#1, #2)"]`, with `stepWord` as the Lean reference body. It agrees with the proven portable path and runs at 10.8 GB/s single-stream at 1 MiB, which is the instruction's latency bound. So kernels over scalar-typed inline intrinsics can stay in Lean and compile to tight code.

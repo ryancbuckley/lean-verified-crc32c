@@ -17,3 +17,7 @@ root = "tests.Diff"
 [[lean_exe]]
 name = "bench_portable"
 root = "tests.BenchPortable"
+
+[[lean_exe]]
+name = "hw_spike"
+root = "spike.HwSpike"
