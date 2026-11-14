@@ -34,6 +34,12 @@ def check (line : String) : Except String Unit := do
     fail (extend c bs) w
     fail (extendPortable c bs) w
     fail (extendHw c bs) w
+    if h : 16 ≤ bs.size then
+      let off := c.toNat % 7
+      let len := bs.size - off - (c.toNat / 7) % 7
+      have hsub : off + len ≤ bs.size := by omega
+      let s := c ^^^ 0xffffffff
+      fail (rawExtendHw s bs off len hsub) (rawExtendPortable s bs off len hsub)
   | ["Z", c, n, want] => fail (extendZeroes (u32 c) n.toNat!) (u32 want)
   | ["C", a, b, n, want] => fail (concat (u32 a) (u32 b) n.toNat!) (u32 want)
   | ["P", a, b, n, want] => fail (removePrefix (u32 a) (u32 b) n.toNat!) (u32 want)

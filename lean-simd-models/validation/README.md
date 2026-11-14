@@ -1,46 +1,52 @@
 # Validation record for the instruction models
 
-Every model in `SimdModels/Models.lean` that is bound to an instruction in
-`SimdModels/Trusted.lean` needs two independent checks: a cross-check against
-the vendor's authoritative semantics, and differential testing on hardware.
+Every model in `SimdModels/Models.lean` that is bound to an instruction or
+unaligned load in `SimdModels/Trusted.lean` has two independent checks: a
+cross-check against the vendor's authoritative semantics, and differential
+testing on hardware.
 
 | Binding | AArch64 hardware | x86-64 | Authoritative cross-check |
 | --- | --- | --- | --- |
-| `crc32c_u8` | pass | pass under Rosetta only | Arm: pass (ASLp). Intel: outstanding |
-| `crc32c_u16` | pass | pass under Rosetta only | Arm: pass (ASLp). Intel: outstanding |
-| `crc32c_u32` | pass | pass under Rosetta only | Arm: pass (ASLp). Intel: outstanding |
-| `crc32c_u64` | pass | pass under Rosetta only | Arm: pass (ASLp). Intel: outstanding |
-| `clmulLo` | pass | pass under Rosetta only | Arm: pass (ASLp). Intel: outstanding |
-| `clmulHi` | pass | pass under Rosetta only | Arm: pass (ASLp). Intel: outstanding |
+| `crc32c_u8` | pass | pass under Rosetta only | Arm: pass (ASLp). Intel: pass (formal SDM proof) |
+| `crc32c_u16` | pass | pass under Rosetta only | Arm: pass (ASLp). Intel: pass (formal SDM proof) |
+| `crc32c_u32` | pass | pass under Rosetta only | Arm: pass (ASLp). Intel: pass (formal SDM proof) |
+| `crc32c_u64` | pass | pass under Rosetta only | Arm: pass (ASLp). Intel: pass (formal SDM proof) |
+| `clmulLo` | pass | pass under Rosetta only | Arm: pass (ASLp). Intel: pass (formal SDM proof) |
+| `clmulHi` | pass | pass under Rosetta only | Arm: pass (ASLp). Intel: pass (formal SDM proof) |
+| `loadU64LE` | pass | pass under Rosetta only | Little-endian `memcpy` + `V128.lane8_vld1q` kernel proof |
 
 ## AArch64 hardware differential test
 
 `tests/HwDiff.lean`, built as `hw_diff`. Compares the compiled Lean model with
-the instruction, for each binding, on 40,000 edge pairs (all-zero, all-one,
-single bits, complements, low runs, alternating patterns) and 10^6 random
-pairs per seed.
+the hardware binding, for all seven bindings, on 40,000 edge pairs (all-zero,
+all-one, single bits, complements, low runs, alternating patterns, and unaligned
+offsets `0..16`) and 10^6 random pairs per seed.
 
 - Machine: Apple M4 (AArch64, `+crc`, `+aes`), macOS 26, Lean 4.35.0 bundled clang 23.1.0.
-- Result: seeds 1 and 2, 2,080,000 pairs per binding, no mismatch.
+- Result: seeds 1 and 2, 2,080,000 pairs per binding (14,560,000 binding evaluations), no mismatch.
   Raw output: `hw_diff_aarch64_apple_m4.txt`.
-- The disassembled test binary contains `crc32cb/ch/cw/cx` and `pmull`.
+- The disassembled test binary contains `crc32cb/ch/cw/cx`, `pmull`, and single-instruction unaligned `ldr`.
 
 ## x86-64
 
 No real x86-64 hardware has been used yet. `validation/cross_arch.c` evaluates
-the six shim macros on the same edge pairs and 10^6 random pairs, built once
-for arm64 and once for x86_64 (`-msse4.2 -mpclmul`, Apple clang 17), and the
-outputs are compared byte for byte.
+all seven shim functions (plus all `PCLMULQDQ` immediate selector variants
+`0x00`, `0x01`, `0x10`, `0x11`, `0xFE`, `0xEF`, `0xFF`) on the edge pairs and
+10^6 random pairs, built once for `arm64` and once for baseline `x86_64`
+(without global `-msse4.2 -mpclmul`, exercising the per-function
+`__attribute__((__target__("sse4.2,pclmul")))` guards in `c/simd_shim.h`), and
+compares the outputs byte for byte.
 
-- Result: identical (49,920,000 bytes, SHA-256 `9a16f20a…0cd015`), with the
+- Result: identical (232,960,000 bytes, SHA-256 `8646edaa…a5103c9`), with the
   x86-64 build run under Rosetta 2. The x86-64 binary contains `crc32` and
   `pclmulqdq` instructions.
-- Rosetta is an emulator: this checks the shim and the compiler lowering, not
-  Intel or AMD silicon. A run on real hardware is still required.
+- Rosetta is an emulator: this checks the shim, `__target__` attributes, and
+  compiler lowering, not Intel or AMD silicon. A run on real hardware is still
+  required.
 
 ## Authoritative cross-check
 
-### Arm: done
+### Arm: done (ASLp)
 
 The real A64 opcodes are executed in ASLp (UQ-PAC/aslp, commit `92e4fd94`),
 which interprets Arm's machine-readable ASL specification, and the results
@@ -64,8 +70,19 @@ are compared with the Lean models.
 Trusted here: ASLp's interpreter, and that its bundled specification is
 Arm's.
 
-### Intel: outstanding
+### Intel: done (universal kernel proof against Intel SDM pseudocode)
 
-To be checked against the Intrinsics Guide pseudocode. Until then the x86-64
-bindings rest on the Rosetta cross-check above and on sharing a model with
-the Arm instructions.
+`SimdModels/IntelSdm.lean` transcribes the imperative `Operation` pseudocode
+from Intel 64 and IA-32 Architectures Software Developer's Manual:
+
+- Vol. 2A `CRC32 — Accumulate CRC32 Value` (8/16/32/64-bit forms, bit-reversed
+  views, `TEMP1[size+31:0] ← TEMP2 ≪ 32 ⊕ TEMP3`, `for i ← 0 to size-1` shift/XOR
+  by `0x11EDC6F41`, and 64-bit `REX.W` upper-32-bit zero-extension).
+- Vol. 2B `PCLMULQDQ — Carry-Less Multiplication Quadword` (`imm8[0]` and
+  `imm8[4]` quadword selectors and the nested `i = 0..63` / `i = 64..126` XOR-AND
+  product loops).
+
+Lean's kernel proves universal equivalence (`crc32_u8_eq`, `crc32_u16_eq`,
+`crc32_u32_eq`, `crc32_u64_eq`, `crc32_r64_eq`, `clmulepi64_eq`) between the
+Intel SDM transcriptions and `SimdModels.Model` across **all** possible operand
+values and `imm8` bytes, using only `[propext, Classical.choice, Quot.sound]`.
