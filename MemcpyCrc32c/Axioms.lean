@@ -3,6 +3,7 @@ Axiom audit for the headline theorems. The build output of this file is the
 record quoted in each phase report.
 -/
 import MemcpyCrc32c.Vectors
+import MemcpyCrc32c.ZeroPoly
 
 open Crc32c
 
@@ -15,3 +16,6 @@ open Crc32c
 #print axioms extendZeroes_spec
 #print axioms check_123456789
 #print axioms zeroes_u64max
+#print axioms zero6_209
+#print axioms zero4_5275
+#print axioms modByMonic_add_zeroPoly_mul

@@ -3,4 +3,5 @@ import MemcpyCrc32c.Spec
 import MemcpyCrc32c.Bitwise
 import MemcpyCrc32c.Arith
 import MemcpyCrc32c.Vectors
+import MemcpyCrc32c.ZeroPoly
 import MemcpyCrc32c.Axioms
