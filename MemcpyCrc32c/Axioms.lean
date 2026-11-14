@@ -44,6 +44,7 @@ open Crc32c
 #print axioms SimdModels.clmul_spec_reflected
 #print axioms SimdModels.V128.ofHalves_lo_hi
 #print axioms SimdModels.V128.lane8_vextq
+#print axioms SimdModels.V128.lane8_vld1q
 #print axioms SimdModels.clmulepi64_spec
 #print axioms SimdModels.clmulepi64_spec_reflected
 #print axioms SimdModels.IntelSdm.crc32_u8_eq
@@ -57,9 +58,15 @@ open Crc32c
 #print axioms crc32c_u32_eq
 #print axioms crc32c_u16_eq
 #print axioms crc32c_u8_eq
+#print axioms loadU64LE_eq_load64
+#print axioms polyR_clmulLo_toUInt64
+#print axioms R128_clmul
 
--- Phase 4 (AArch64 track): hardware-CRC kernel. Rests on the trusted bindings in
--- `SimdModels.Trusted`, which `#print axioms` cannot show.
+-- Phase 4 (AArch64 / x86-64 hybrid hardware-CRC + CLMUL kernel). Rests on the
+-- trusted bindings in `SimdModels.Trusted`, which `#print axioms` cannot show.
+#print axioms π_P_hwMul
+#print axioms hwFold3_spec
+#print axioms hwFold6_eq
 #print axioms rawExtendHw_eq
 #print axioms extendHw_eq_extend
 #print axioms extendHw_eq_spec
