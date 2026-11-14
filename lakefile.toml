@@ -7,6 +7,10 @@ name = "mathlib"
 scope = "leanprover-community"
 rev = "v4.35.0"
 
+[[require]]
+name = "simdModels"
+path = "lean-simd-models"
+
 [[lean_lib]]
 name = "MemcpyCrc32c"
 
