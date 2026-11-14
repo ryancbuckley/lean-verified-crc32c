@@ -8,6 +8,7 @@ Every Phase 1 and Phase 2 theorem depends only on Lean's standard axioms
 -/
 import MemcpyCrc32c.Vectors
 import MemcpyCrc32c.Portable
+import MemcpyCrc32c.Hw
 
 open Crc32c
 
@@ -35,3 +36,10 @@ open Crc32c
 #print axioms rawExtendPortable_eq
 #print axioms extendPortable_eq_extend
 #print axioms extendPortable_eq_spec
+
+-- Phase 3: instruction-model semantics and their link to the reference.
+#print axioms SimdModels.crc32c_spec
+#print axioms SimdModels.clmul_spec
+#print axioms G_eq_castagnoli
+#print axioms crc32c_u64_eq
+#print axioms crc32c_u8_eq

@@ -1,0 +1,1 @@
+OK: 6 bindings agree with their models on 40000 edge pairs and 1000000 random pairs each (seed 1)

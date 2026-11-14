@@ -8,7 +8,7 @@
    "inherited": false,
    "dir": "lean-simd-models",
    "copy": false,
-   "configFile": "lakefile.toml"},
+   "configFile": "lakefile.lean"},
   {"url": "https://github.com/leanprover-community/mathlib4",
    "type": "git",
    "subDir": null,
