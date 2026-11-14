@@ -155,6 +155,45 @@ def clmulepi64 (a b : V128) (imm8 : UInt8) : V128 :=
   let src2 := if imm8.toBitVec.getLsbD 4 then (V128.hi64 b).toBitVec else (V128.lo64 b).toBitVec
   polynomialMult src1 src2
 
+/-! ### Unaligned little-endian 64-bit and 128-bit memory loads -/
+
+theorem usize_size_gt : 0x80000000 ≤ USize.size := by
+  rcases System.Platform.numBits_eq with h | h <;> simp [USize.size, h]
+
+theorem usize_add_toNat (i : USize) (k : Nat) (h : i.toNat + k < USize.size) :
+    (i + USize.ofNat k).toNat = i.toNat + k := by
+  have := usize_size_gt
+  rw [USize.toNat_add, USize.toNat_ofNat_of_lt' (by omega)]
+  exact Nat.mod_eq_of_lt h
+
+/-- Little-endian 64-bit word assembled from eight bytes. -/
+def word64 (b0 b1 b2 b3 b4 b5 b6 b7 : UInt8) : UInt64 :=
+  b0.toUInt64 ||| (b1.toUInt64 <<< 8) ||| (b2.toUInt64 <<< 16) ||| (b3.toUInt64 <<< 24) |||
+    (b4.toUInt64 <<< 32) ||| (b5.toUInt64 <<< 40) ||| (b6.toUInt64 <<< 48) ||| (b7.toUInt64 <<< 56)
+
+/-- Unaligned little-endian 64-bit load at byte offset `i` (`LDR Xt` / `MOV r64, m64`,
+or half of `LDR Qt` / `MOVDQU xmm, m128`). Proof arguments `hs` and `h` guarantee
+`i.toNat + 8 ≤ a.size` and are erased at runtime. -/
+def loadU64LE (a : @& ByteArray) (i : USize) (hs : a.size < USize.size)
+    (h : i.toNat + 8 ≤ a.size) : UInt64 :=
+  have h1 : (i + 1).toNat = i.toNat + 1 := usize_add_toNat i 1 (by omega)
+  have h2 : (i + 2).toNat = i.toNat + 2 := usize_add_toNat i 2 (by omega)
+  have h3 : (i + 3).toNat = i.toNat + 3 := usize_add_toNat i 3 (by omega)
+  have h4 : (i + 4).toNat = i.toNat + 4 := usize_add_toNat i 4 (by omega)
+  have h5 : (i + 5).toNat = i.toNat + 5 := usize_add_toNat i 5 (by omega)
+  have h6 : (i + 6).toNat = i.toNat + 6 := usize_add_toNat i 6 (by omega)
+  have h7 : (i + 7).toNat = i.toNat + 7 := usize_add_toNat i 7 (by omega)
+  word64 (a.uget i (by omega)) (a.uget (i + 1) (by omega)) (a.uget (i + 2) (by omega))
+    (a.uget (i + 3) (by omega)) (a.uget (i + 4) (by omega)) (a.uget (i + 5) (by omega))
+    (a.uget (i + 6) (by omega)) (a.uget (i + 7) (by omega))
+
+/-- Unaligned 128-bit vector load (`LDR Qt` / `vld1q_u8` / `_mm_loadu_si128`),
+modeled as the pair of adjacent unaligned little-endian 64-bit loads. -/
+def vld1q (a : @& ByteArray) (i : USize) (hs : a.size < USize.size)
+    (h : i.toNat + 16 ≤ a.size) : V128 :=
+  have h8 : (i + 8).toNat = i.toNat + 8 := usize_add_toNat i 8 (by omega)
+  V128.ofHalves (loadU64LE a i hs (by omega)) (loadU64LE a (i + 8) hs (by omega))
+
 end Model
 
 end SimdModels

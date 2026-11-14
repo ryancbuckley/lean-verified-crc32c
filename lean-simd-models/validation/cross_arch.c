@@ -59,7 +59,13 @@ static void emit(uint64_t x, uint64_t y) {
   uint32_t c = (uint32_t)x;
   uint64_t x1 = nxt(x ^ 0xA5A5A5A5A5A5A5A5ull);
   uint64_t y1 = nxt(y ^ 0x5A5A5A5A5A5A5A5Aull);
-  uint64_t out[20];
+  uint8_t buf[24];
+  for (int b = 0; b < 8; b++) {
+    buf[b] = (uint8_t)(x >> (b * 8));
+    buf[8 + b] = (uint8_t)(x1 >> (b * 8));
+    buf[16 + b] = (uint8_t)(y >> (b * 8));
+  }
+  uint64_t out[28];
   out[0] = SIMDMODELS_CRC32C_U8(c, (uint8_t)y);
   out[1] = SIMDMODELS_CRC32C_U16(c, (uint16_t)y);
   out[2] = SIMDMODELS_CRC32C_U32(c, (uint32_t)y);
@@ -83,6 +89,9 @@ static void emit(uint64_t x, uint64_t y) {
   clmul_ef(x, x1, y, y1, &out[16], &out[17]);
   clmul_ff(x, x1, y, y1, &out[18], &out[19]);
 #endif
+  for (int off = 0; off < 8; off++) {
+    out[20 + off] = simdmodels_load_u64_le_ptr(buf, (size_t)off);
+  }
   fwrite(out, sizeof out, 1, stdout);
 }
 

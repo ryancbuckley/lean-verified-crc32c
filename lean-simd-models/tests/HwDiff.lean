@@ -24,6 +24,13 @@ def fail (name : String) (x y : UInt64) (got want : UInt64) : IO Unit := do
   IO.eprintln s!"MISMATCH {name}: inputs {x} {y}: hardware {got}, model {want}"
   IO.Process.exit 1
 
+def packBuf24 (x y z : UInt64) : ByteArray := Id.run do
+  let mut b := ByteArray.emptyWithCapacity 24
+  for k in [0:8] do b := b.push (x >>> (k * 8).toUInt64).toUInt8
+  for k in [0:8] do b := b.push (y >>> (k * 8).toUInt64).toUInt8
+  for k in [0:8] do b := b.push (z >>> (k * 8).toUInt64).toUInt8
+  return b
+
 def check (x y : UInt64) : IO Unit := do
   let c := x.toUInt32
   if crc32c_u8 c y.toUInt8 != Model.crc32c_u8 c y.toUInt8 then
@@ -36,6 +43,16 @@ def check (x y : UInt64) : IO Unit := do
     fail "crc32c_u64" x y (crc32c_u64 c y).toUInt64 (Model.crc32c_u64 c y).toUInt64
   if clmulLo x y != Model.clmulLo x y then fail "clmulLo" x y (clmulLo x y) (Model.clmulLo x y)
   if clmulHi x y != Model.clmulHi x y then fail "clmulHi" x y (clmulHi x y) (Model.clmulHi x y)
+  let buf := packBuf24 x y (next (x ^^^ y))
+  let off : Nat := (x ^^^ (y >>> 17)).toNat % 17
+  if h : buf.size = 24 ∧ off ≤ 16 then
+    have hs : buf.size < USize.size := by have := Model.usize_size_gt; omega
+    have hu : off.toUSize.toNat = off := by
+      have := Model.usize_size_gt; exact USize.toNat_ofNat_of_lt' (by omega)
+    have hb : off.toUSize.toNat + 8 ≤ buf.size := by omega
+    let got := loadU64LE buf off.toUSize hs hb
+    let want := Model.loadU64LE buf off.toUSize hs hb
+    if got != want then fail "loadU64LE" x y got want
 
 def main (args : List String) : IO Unit := do
   let n := (args[0]? >>= String.toNat?).getD 1000000
@@ -49,4 +66,4 @@ def main (args : List String) : IO Unit := do
     s := next s; let x := s
     s := next s; let y := s
     check x y
-  IO.println s!"OK: 6 bindings agree with their models on {es.size * es.size} edge pairs and {n} random pairs each (seed {seed})"
+  IO.println s!"OK: 7 bindings agree with their models on {es.size * es.size} edge pairs and {n} random pairs each (seed {seed})"

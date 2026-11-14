@@ -121,17 +121,17 @@ theorem V128.lane8_vextq (a b : V128) (imm i : Fin 16) :
       BitVec.getLsbD_append, hk, decide_true, Bool.true_and]
     have h1 : 8 * i.val + k < 128 := by omega
     have heq : 8 * imm.val + (8 * i.val + k) = 8 * (imm.val + i.val) + k := by omega
-    simp only [h1, decide_true, Bool.true_and, heq]
-    exact if_pos (by omega)
+    have hlt : 8 * (imm.val + i.val) + k < 128 := by omega
+    simp [h1, heq, hlt]
   · rw [← UInt8.toBitVec_inj]
     apply BitVec.eq_of_getLsbD_eq
     intro k hk
     simp only [Model.vextq, V128.lane8, BitVec.getLsbD_setWidth, BitVec.getLsbD_ushiftRight,
       BitVec.getLsbD_append, hk, decide_true, Bool.true_and]
     have h1 : 8 * i.val + k < 128 := by omega
+    have hnlt : ¬ 8 * imm.val + (8 * i.val + k) < 128 := by omega
     have heq : 8 * imm.val + (8 * i.val + k) - 128 = 8 * (imm.val + i.val - 16) + k := by omega
-    simp only [h1, decide_true, Bool.true_and, heq]
-    exact if_neg (by omega)
+    simp [h1, hnlt, heq]
 
 theorem polyN_ofHalves (lo hi : UInt64) :
     polyN (V128.ofHalves lo hi) = polyN lo.toBitVec + polyN hi.toBitVec * X ^ 64 := by
@@ -183,5 +183,134 @@ theorem clmulepi64_00_eq_vmull_p64 (a b : V128) :
 
 theorem clmulepi64_11_eq_vmull_high_p64 (a b : V128) :
     Model.clmulepi64 a b 0x11 = Model.vmull_high_p64 a b := rfl
+
+/-! ### Unaligned 64-bit / 128-bit memory load lemmas (`loadU64LE`, `vld1q`) -/
+
+theorem V128.lane8_ofHalves (lo hi : UInt64) (k : Fin 16) :
+    V128.lane8 (V128.ofHalves lo hi) k =
+      if k.val < 8 then ⟨(lo.toBitVec >>> (8 * k.val)).setWidth 8⟩
+      else ⟨(hi.toBitVec >>> (8 * (k.val - 8))).setWidth 8⟩ := by
+  split_ifs with hk
+  · rw [← UInt8.toBitVec_inj]
+    apply BitVec.eq_of_getLsbD_eq
+    intro j hj
+    simp only [V128.lane8, V128.ofHalves, BitVec.getLsbD_setWidth, BitVec.getLsbD_ushiftRight,
+      BitVec.getLsbD_append, hj, decide_true, Bool.true_and]
+    simp [show 8 * k.val + j < 64 by omega]
+  · rw [← UInt8.toBitVec_inj]
+    apply BitVec.eq_of_getLsbD_eq
+    intro j hj
+    simp only [V128.lane8, V128.ofHalves, BitVec.getLsbD_setWidth, BitVec.getLsbD_ushiftRight,
+      BitVec.getLsbD_append, hj, decide_true, Bool.true_and]
+    simp [show ¬ 8 * k.val + j < 64 by omega,
+      show 8 * k.val + j - 64 = 8 * (k.val - 8) + j by omega]
+
+theorem V128.lo64_vld1q (a : ByteArray) (i : USize) (hs : a.size < USize.size)
+    (h : i.toNat + 16 ≤ a.size) :
+    V128.lo64 (Model.vld1q a i hs h) = Model.loadU64LE a i hs (by omega) := by
+  unfold Model.vld1q
+  exact V128.lo64_ofHalves _ _
+
+theorem V128.hi64_vld1q (a : ByteArray) (i : USize) (hs : a.size < USize.size)
+    (h : i.toNat + 16 ≤ a.size) :
+    have _ : (i + 8).toNat = i.toNat + 8 := Model.usize_add_toNat i 8 (by omega)
+    V128.hi64 (Model.vld1q a i hs h) = Model.loadU64LE a (i + 8) hs (by omega) := by
+  unfold Model.vld1q
+  exact V128.hi64_ofHalves _ _
+
+private theorem getLsbD_byte_in_u64 (b : UInt8) (m r j : Nat)
+    (hm : m < 8) (hr : r < 8) (hj : j < 8) :
+    ((b.toUInt64 <<< (8 * m).toUInt64).toBitVec).getLsbD (8 * r + j) =
+      (decide (m = r) && b.toBitVec.getLsbD (8 * r + j - 8 * m)) := by
+  have e64 : b.toUInt64.toBitVec = b.toBitVec.setWidth 64 := by simp
+  have esh : (b.toUInt64 <<< (8 * m).toUInt64).toBitVec = b.toUInt64.toBitVec <<< (8 * m) := by
+    simp [Nat.mod_eq_of_lt (show 8 * m < 64 by omega)]
+  have hidx : 8 * r + j < 64 := by omega
+  rw [esh, e64, BitVec.getLsbD_shiftLeft]
+  simp only [hidx, decide_true, Bool.true_and, BitVec.getLsbD_setWidth]
+  by_cases heq : m = r
+  · subst heq
+    simp [show ¬ 8 * m + j < 8 * m by omega, show j < 64 by omega]
+  · by_cases hlt : m < r
+    · simp [heq, show ¬ 8 * r + j < 8 * m by omega, show 8 * r + j - 8 * m < 64 by omega,
+        BitVec.getLsbD_of_ge b.toBitVec (8 * r + j - 8 * m) (by omega)]
+    · simp [heq, show 8 * r + j < 8 * m by omega]
+
+private theorem word64_byte (b0 b1 b2 b3 b4 b5 b6 b7 : UInt8) (r : Nat) (hr : r < 8) :
+    (⟨((Model.word64 b0 b1 b2 b3 b4 b5 b6 b7).toBitVec >>> (8 * r)).setWidth 8⟩ : UInt8) =
+      match r with
+      | 0 => b0 | 1 => b1 | 2 => b2 | 3 => b3
+      | 4 => b4 | 5 => b5 | 6 => b6 | _ => b7 := by
+  rw [← UInt8.toBitVec_inj]
+  apply BitVec.eq_of_getLsbD_eq
+  intro j hj
+  have hb0 : b0.toUInt64 = b0.toUInt64 <<< (8 * 0).toUInt64 := by simp
+  unfold Model.word64
+  rw [hb0]
+  have lhs_eq :
+      (((b0.toUInt64 <<< (8 * 0).toUInt64 ||| (b1.toUInt64 <<< 8) ||| (b2.toUInt64 <<< 16) |||
+        (b3.toUInt64 <<< 24) ||| (b4.toUInt64 <<< 32) ||| (b5.toUInt64 <<< 40) |||
+        (b6.toUInt64 <<< 48) ||| (b7.toUInt64 <<< 56)).toBitVec >>> (8 * r)).setWidth 8).getLsbD j =
+      (((b0.toUInt64 <<< (8 * 0).toUInt64 ||| (b1.toUInt64 <<< (8 * 1).toUInt64) |||
+        (b2.toUInt64 <<< (8 * 2).toUInt64) ||| (b3.toUInt64 <<< (8 * 3).toUInt64) |||
+        (b4.toUInt64 <<< (8 * 4).toUInt64) ||| (b5.toUInt64 <<< (8 * 5).toUInt64) |||
+        (b6.toUInt64 <<< (8 * 6).toUInt64) ||| (b7.toUInt64 <<< (8 * 7).toUInt64)).toBitVec >>>
+        (8 * r)).setWidth 8).getLsbD j := rfl
+  rw [lhs_eq]
+  simp only [BitVec.getLsbD_setWidth, BitVec.getLsbD_ushiftRight, hj, decide_true, Bool.true_and,
+    UInt64.toBitVec_or, BitVec.getLsbD_or,
+    getLsbD_byte_in_u64 _ 0 r j (by omega) hr hj,
+    getLsbD_byte_in_u64 _ 1 r j (by omega) hr hj,
+    getLsbD_byte_in_u64 _ 2 r j (by omega) hr hj,
+    getLsbD_byte_in_u64 _ 3 r j (by omega) hr hj,
+    getLsbD_byte_in_u64 _ 4 r j (by omega) hr hj,
+    getLsbD_byte_in_u64 _ 5 r j (by omega) hr hj,
+    getLsbD_byte_in_u64 _ 6 r j (by omega) hr hj,
+    getLsbD_byte_in_u64 _ 7 r j (by omega) hr hj]
+  rcases (by omega : r = 0 ∨ r = 1 ∨ r = 2 ∨ r = 3 ∨ r = 4 ∨ r = 5 ∨ r = 6 ∨ r = 7) with
+    rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl <;> simp
+
+private theorem uget_eq (a : ByteArray) (j : USize) (n : Nat) (hj : j.toNat = n)
+    (h : j.toNat < a.size) : a.uget j h = a[n]'(hj ▸ h) := by
+  subst hj; rfl
+
+theorem loadU64LE_byte (a : ByteArray) (i : USize) (hs : a.size < USize.size)
+    (h : i.toNat + 8 ≤ a.size) (r : Nat) (hr : r < 8) :
+    (⟨((Model.loadU64LE a i hs h).toBitVec >>> (8 * r)).setWidth 8⟩ : UInt8) =
+      a[i.toNat + r]'(by omega) := by
+  have h1 : (i + 1).toNat = i.toNat + 1 := Model.usize_add_toNat i 1 (by omega)
+  have h2 : (i + 2).toNat = i.toNat + 2 := Model.usize_add_toNat i 2 (by omega)
+  have h3 : (i + 3).toNat = i.toNat + 3 := Model.usize_add_toNat i 3 (by omega)
+  have h4 : (i + 4).toNat = i.toNat + 4 := Model.usize_add_toNat i 4 (by omega)
+  have h5 : (i + 5).toNat = i.toNat + 5 := Model.usize_add_toNat i 5 (by omega)
+  have h6 : (i + 6).toNat = i.toNat + 6 := Model.usize_add_toNat i 6 (by omega)
+  have h7 : (i + 7).toNat = i.toNat + 7 := Model.usize_add_toNat i 7 (by omega)
+  unfold Model.loadU64LE
+  dsimp only
+  rw [word64_byte _ _ _ _ _ _ _ _ r hr]
+  rcases (by omega : r = 0 ∨ r = 1 ∨ r = 2 ∨ r = 3 ∨ r = 4 ∨ r = 5 ∨ r = 6 ∨ r = 7) with
+    rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl
+  · simpa using uget_eq a i i.toNat rfl (by omega)
+  · exact uget_eq a (i + 1) (i.toNat + 1) h1 (by omega)
+  · exact uget_eq a (i + 2) (i.toNat + 2) h2 (by omega)
+  · exact uget_eq a (i + 3) (i.toNat + 3) h3 (by omega)
+  · exact uget_eq a (i + 4) (i.toNat + 4) h4 (by omega)
+  · exact uget_eq a (i + 5) (i.toNat + 5) h5 (by omega)
+  · exact uget_eq a (i + 6) (i.toNat + 6) h6 (by omega)
+  · exact uget_eq a (i + 7) (i.toNat + 7) h7 (by omega)
+
+/-- Lane `k` (`0 ≤ k < 16`) of an unaligned 128-bit load `vld1q` at byte offset
+`i` equals `a[i + k]`. -/
+theorem V128.lane8_vld1q (a : ByteArray) (i : USize) (hs : a.size < USize.size)
+    (h : i.toNat + 16 ≤ a.size) (k : Fin 16) :
+    V128.lane8 (Model.vld1q a i hs h) k = a[i.toNat + k.val]'(by omega) := by
+  have h8 : (i + 8).toNat = i.toNat + 8 := Model.usize_add_toNat i 8 (by omega)
+  unfold Model.vld1q
+  rw [V128.lane8_ofHalves]
+  split_ifs with hk
+  · exact loadU64LE_byte a i hs (by omega) k.val hk
+  · rw [loadU64LE_byte a (i + 8) hs (by omega) (k.val - 8) (by omega)]
+    congr 1
+    omega
 
 end SimdModels

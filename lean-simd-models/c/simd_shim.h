@@ -16,7 +16,23 @@
 #ifndef SIMDMODELS_SHIM_H
 #define SIMDMODELS_SHIM_H
 
+#include <stddef.h>
 #include <stdint.h>
+
+/* Unaligned little-endian 64-bit load (LDR Xt / MOV r64, m64, or half of LDR Qt / MOVDQU).
+ * Exposes a single i64 load in LLVM IR so CGSCC inlining and SLPVectorizer can
+ * form 128-bit vector loads across adjacent 64-bit halves (unlike 8 separate
+ * byte loads through a [0 x i8] flexible array member). */
+static inline __attribute__((__always_inline__)) uint64_t
+simdmodels_load_u64_le_ptr(const uint8_t *p, size_t i) {
+  uint64_t v;
+  __builtin_memcpy(&v, p + i, sizeof(v));
+#if defined(__BYTE_ORDER__) && defined(__ORDER_BIG_ENDIAN__) && \
+    (__BYTE_ORDER__ == __ORDER_BIG_ENDIAN__)
+  v = __builtin_bswap64(v);
+#endif
+  return v;
+}
 
 #if defined(__aarch64__)
 
@@ -114,5 +130,7 @@ static inline uint64_t simdmodels_clmul_hi(uint64_t a, uint64_t b) {
 #define SIMDMODELS_CRC32C_U64(c, v) simdmodels_crc32c_u64((c), (v))
 #define SIMDMODELS_CLMUL_LO(a, b)   simdmodels_clmul_lo((a), (b))
 #define SIMDMODELS_CLMUL_HI(a, b)   simdmodels_clmul_hi((a), (b))
+#define SIMDMODELS_LOAD_U64_LE(a, i) \
+  simdmodels_load_u64_le_ptr((const uint8_t *)lean_sarray_cptr(a), (size_t)(i))
 
 #endif
