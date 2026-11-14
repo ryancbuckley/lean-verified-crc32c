@@ -2,28 +2,10 @@
 The bitwise executable reference, proven equal to the polynomial spec.
 -/
 import MemcpyCrc32c.Spec
+import MemcpyCrc32c.Impl.Reference
 
 namespace Crc32c
 open Polynomial
-
-/-- Advance the state by one zero bit: multiply by `X` modulo `G` (reflected). -/
-def stepBit (s : UInt32) : UInt32 :=
-  (s >>> 1) ^^^ (if s &&& 1 = 1 then 0x82F63B78 else 0)
-
-/-- Absorb one message byte. -/
-def stepByte (s : UInt32) (b : UInt8) : UInt32 :=
-  stepBit <| stepBit <| stepBit <| stepBit <| stepBit <| stepBit <| stepBit <| stepBit
-    (s ^^^ b.toUInt32)
-
-/-- Unconditioned bitwise CRC over a list of bytes. -/
-def rawExtend (s : UInt32) (bs : List UInt8) : UInt32 := bs.foldl stepByte s
-
-/-- `absl::ExtendCrc32c`, bit at a time. The executable reference. -/
-def extend (c : UInt32) (bs : ByteArray) : UInt32 :=
-  rawExtend (c ^^^ 0xFFFFFFFF) bs.data.toList ^^^ 0xFFFFFFFF
-
-/-- `absl::ComputeCrc32c`. -/
-def crc32c (bs : ByteArray) : UInt32 := extend 0 bs
 
 /-! ### Bridge lemmas: words to polynomials -/
 
