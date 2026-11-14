@@ -24,4 +24,8 @@ theorem word64_bytes (w : UInt64) :
       (w >>> 32).toUInt8 (w >>> 40).toUInt8 (w >>> 48).toUInt8 (w >>> 56).toUInt8 = w := by
   unfold word64; bv_decide
 
+/-- Shifting left by 24 keeps only the low byte. -/
+theorem shl24_eq_lowByte (s : UInt32) : s <<< 24 = s.toUInt8.toUInt32 <<< 24 := by
+  bv_decide
+
 end Crc32c.BvDecide

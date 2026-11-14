@@ -1,6 +1,7 @@
 /-
-The portable CRC32C path: plain `UInt64` word operations, no lookup tables and
-no carry-less multiply. Core-only executable code; proven equal to the
+The portable CRC32C path: plain `UInt64` word operations and no carry-less
+multiply. Lookup tables are used only for the last 32 to 39 bytes and for
+inputs shorter than 40 bytes. Core-only executable code; proven equal to the
 reference in `MemcpyCrc32c.Portable`.
 
 The kernel is Chorba-style reduction by the 6-term zero polynomial
@@ -47,11 +48,34 @@ def stepWord (s : UInt32) (w : UInt64) : UInt32 :=
   let s := stepByte s (w >>> 48).toUInt8
   stepByte s (w >>> 56).toUInt8
 
-/-- Bytewise reference loop over `a[i, stop)`. -/
+/-- Slicing-by-8 table, computed from the bitwise reference at start-up:
+entry `256 * j + b` is the state after byte `b` followed by `j` zero bytes. -/
+def sliceTable : Array UInt32 :=
+  Array.ofFn (n := 2048) fun i => rawExtend 0 (UInt8.ofNat (i.val % 256) :: List.replicate (i.val / 256) 0)
+
+theorem sliceTable_size : sliceTable.size = 2048 := Array.size_ofFn
+
+/-- Table lookup: byte `b` followed by `j` zero bytes. -/
+@[inline] def tbl (j : Nat) (hj : j < 8) (b : UInt8) : UInt32 :=
+  sliceTable[256 * j + b.toNat]'(by rw [sliceTable_size]; have := b.toNat_lt; omega)
+
+/-- `stepByte` by table lookup. -/
+@[inline] def stepByteT (s : UInt32) (b : UInt8) : UInt32 :=
+  tbl 0 (by omega) (s.toUInt8 ^^^ b) ^^^ (s >>> 8)
+
+/-- `stepWord` by slicing-by-8. -/
+@[inline] def stepWordT (s : UInt32) (w : UInt64) : UInt32 :=
+  let x := w ^^^ s.toUInt64
+  tbl 7 (by omega) x.toUInt8 ^^^ tbl 6 (by omega) (x >>> 8).toUInt8 ^^^
+    tbl 5 (by omega) (x >>> 16).toUInt8 ^^^ tbl 4 (by omega) (x >>> 24).toUInt8 ^^^
+    tbl 3 (by omega) (x >>> 32).toUInt8 ^^^ tbl 2 (by omega) (x >>> 40).toUInt8 ^^^
+    tbl 1 (by omega) (x >>> 48).toUInt8 ^^^ tbl 0 (by omega) (x >>> 56).toUInt8
+
+/-- Table-driven bytewise loop over `a[i, stop)`. -/
 def bytesLoop (a : @& ByteArray) (i stop : USize) (hstop : stop.toNat ≤ a.size)
     (s : UInt32) : UInt32 :=
   if hlt : i < stop then
-    bytesLoop a (i + 1) stop hstop (stepByte s (a.uget i (by rw [USize.lt_iff_toNat_lt] at hlt; omega)))
+    bytesLoop a (i + 1) stop hstop (stepByteT s (a.uget i (by rw [USize.lt_iff_toNat_lt] at hlt; omega)))
   else s
 termination_by stop.toNat - i.toNat
 decreasing_by
@@ -60,9 +84,26 @@ decreasing_by
   have h1 : (i + 1).toNat = i.toNat + 1 := usize_add_toNat i 1 (by omega)
   omega
 
+/-- Slicing-by-8 over `a[i, fin)`: whole words, then the remaining bytes.
+Used for short inputs. -/
+def sliceLoop (a : @& ByteArray) (hs : a.size < USize.size) (i fin : USize)
+    (hi : i.toNat ≤ fin.toNat) (hfin : fin.toNat ≤ a.size) (s : UInt32) : UInt32 :=
+  if h : 8 ≤ fin - i then
+    have hsub : (fin - i).toNat = fin.toNat - i.toNat :=
+      USize.toNat_sub_of_le fin i (USize.le_iff_toNat_le.mpr hi)
+    have h' : 8 ≤ fin.toNat - i.toNat := by
+      have := USize.le_iff_toNat_le.mp h
+      have e8 : (8 : USize).toNat = 8 := by simp
+      rw [hsub, e8] at this; exact this
+    have h8 : (i + 8).toNat = i.toNat + 8 := usize_add_toNat i 8 (by omega)
+    sliceLoop a hs (i + 8) fin (by omega) hfin (stepWordT s (load64 a i hs (by omega)))
+  else bytesLoop a i fin hfin s
+termination_by fin.toNat - i.toNat
+decreasing_by omega
+
 /-- The reduction loop. Words `a[i, stop)` are folded into the four pending
 words; then the last four words and the tail bytes `a[stop + 32, fin)` are
-finished with the reference. -/
+finished by table lookup. -/
 def fold209 (a : @& ByteArray) (hs : a.size < USize.size) (i stop fin : USize)
     (_hi : i.toNat ≤ stop.toNat) (hal : (stop.toNat - i.toNat) % 8 = 0)
     (hstop : stop.toNat + 32 ≤ fin.toNat) (hfin : fin.toNat ≤ a.size)
@@ -81,10 +122,10 @@ def fold209 (a : @& ByteArray) (hs : a.size < USize.size) (i stop fin : USize)
     have h16 : (stop + 16).toNat = stop.toNat + 16 := usize_add_toNat stop 16 (by omega)
     have h24 : (stop + 24).toNat = stop.toNat + 24 := usize_add_toNat stop 24 (by omega)
     have h32 : (stop + 32).toNat = stop.toNat + 32 := usize_add_toNat stop 32 (by omega)
-    let s := stepWord 0 (load64 a stop hs (by omega) ^^^ n1)
-    let s := stepWord s (load64 a (stop + 8) hs (by omega) ^^^ n2)
-    let s := stepWord s (load64 a (stop + 16) hs (by omega) ^^^ n3)
-    let s := stepWord s (load64 a (stop + 24) hs (by omega) ^^^ n4)
+    let s := stepWordT 0 (load64 a stop hs (by omega) ^^^ n1)
+    let s := stepWordT s (load64 a (stop + 8) hs (by omega) ^^^ n2)
+    let s := stepWordT s (load64 a (stop + 16) hs (by omega) ^^^ n3)
+    let s := stepWordT s (load64 a (stop + 24) hs (by omega) ^^^ n4)
     bytesLoop a (stop + 32) fin hfin s
 termination_by stop.toNat - i.toNat
 decreasing_by omega
@@ -101,7 +142,8 @@ def rawExtendPortable (s : UInt32) (a : @& ByteArray) (off len : Nat)
         (by rw [USize.toNat_ofNat_of_lt' (by omega)]; omega)
         s.toUInt64 0 0 0
     else
-      bytesLoop a off.toUSize (off + len).toUSize
+      sliceLoop a hs off.toUSize (off + len).toUSize
+        (by rw [USize.toNat_ofNat_of_lt' (by omega), USize.toNat_ofNat_of_lt' (by omega)]; omega)
         (by rw [USize.toNat_ofNat_of_lt' (by omega)]; omega) s
   else
     -- Unreachable on any real platform: byte arrays are smaller than the address space.

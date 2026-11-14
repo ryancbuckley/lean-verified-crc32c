@@ -2,7 +2,7 @@
 Proof that the portable path (`MemcpyCrc32c.Impl.Portable`) equals the bitwise
 reference: `fast_eq_ref` for the portable kernel.
 
-Depends on `Lean.ofReduceBool` through the two quarantined word identities in
+Depends on the `bv_decide` axioms of the quarantined word identities in
 `MemcpyCrc32c.BvDecide.Word64`.
 -/
 import MemcpyCrc32c.ZeroPoly
@@ -39,30 +39,6 @@ theorem bytes_whole (a : ByteArray) : bytes a 0 a.size = a.data.toList := by
 theorem bytes_extract (a : ByteArray) (i j : Nat) :
     (a.extract i j).data.toList = bytes a i j := by
   simp [bytes, ByteArray.data_extract]
-
-/-! ### The bytewise loop -/
-
-theorem bytesLoop_eq (a : ByteArray) (hs : a.size < USize.size) (stop : USize)
-    (hstop : stop.toNat ≤ a.size) :
-    ∀ (k : Nat) (i : USize) (s : UInt32), stop.toNat - i.toNat = k →
-      bytesLoop a i stop hstop s = rawExtend s (bytes a i.toNat stop.toNat) := by
-  intro k
-  induction k with
-  | zero =>
-    intro i s hk
-    have hn : ¬ i < stop := by rw [USize.lt_iff_toNat_lt]; omega
-    rw [bytesLoop]
-    simp only [hn, ↓reduceDIte]
-    rw [bytes_of_le a (by omega)]
-    rfl
-  | succ k ih =>
-    intro i s hk
-    have hlt : i < stop := by rw [USize.lt_iff_toNat_lt]; omega
-    have h1 : (i + 1).toNat = i.toNat + 1 := usize_add_toNat i 1 (by omega)
-    rw [bytesLoop]
-    simp only [hlt, ↓reduceDIte]
-    rw [ih _ _ (by omega), h1, bytes_cons a i.toNat stop.toNat (by omega) hstop]
-    rfl
 
 /-! ### 64-bit words -/
 
@@ -131,6 +107,121 @@ theorem π_P_stepWord (s : UInt32) (w : UInt64) :
       (w >>> 56).toUInt8] := rfl
   rw [h, π_P_rawExtend, ← polyR_word64, BvDecide.word64_bytes]
   simp
+
+/-! ### Table lookups -/
+
+theorem polyR_toUInt64 (s : UInt32) : polyR s.toUInt64.toBitVec = P s * X ^ 32 := by
+  have : s.toUInt64.toBitVec = s.toBitVec.setWidth 64 := by simp
+  rw [this, polyR_setWidth (by omega)]
+
+theorem π_P_tbl (j : Nat) (hj : j < 8) (b : UInt8) :
+    π (P (tbl j hj b)) = π (polyR b.toBitVec) * π X ^ (8 * j + 32) := by
+  have hb := b.toNat_lt
+  have e1 : (256 * j + b.toNat) % 256 = b.toNat := by omega
+  have e2 : (256 * j + b.toNat) / 256 = j := by omega
+  have h : tbl j hj b = rawExtend 0 (b :: List.replicate j 0) := by
+    simp only [tbl, sliceTable, Array.getElem_ofFn, e1, e2, UInt8.ofNat_toNat]
+  rw [h, π_P_rawExtend, P_zero]
+  simp only [msgPoly, msgPoly_replicate_zero, List.length_replicate, map_zero, zero_mul, zero_add,
+    add_zero, map_mul, map_pow]
+  ring
+
+theorem stepByteT_eq (s : UInt32) (b : UInt8) : stepByteT s b = stepByte s b := by
+  apply eq_of_π_P
+  have h := polyR_shiftLeft_add_shiftRight s.toBitVec 24 (by omega)
+  have e1 : s.toBitVec <<< 24 = (s <<< 24).toBitVec := by simp
+  have e2 : ∀ x : UInt32, (x <<< 24).toBitVec = x.toBitVec <<< 24 := by intro x; simp
+  have e2' : ∀ c : UInt8, c.toUInt32.toBitVec = c.toBitVec.setWidth 32 := by intro c; simp
+  have e3 : s.toBitVec >>> (32 - 24) = (s >>> 8).toBitVec := by simp
+  rw [e1, BvDecide.shl24_eq_lowByte, e2, e2', polyR_setWidth_shiftLeft (by omega), e3] at h
+  simp only [Nat.reduceSub, pow_zero, mul_one] at h
+  have h' := congrArg π h
+  simp only [map_add, map_mul, map_pow] at h'
+  have hx : polyR (s.toUInt8 ^^^ b).toBitVec = polyR s.toUInt8.toBitVec + polyR b.toBitVec := by
+    simp [polyR_xor]
+  rw [π_P_stepByte, stepByteT, P_xor, map_add, π_P_tbl, hx, map_add]
+  linear_combination h'
+
+theorem stepWordT_eq (s : UInt32) (w : UInt64) : stepWordT s w = stepWord s w := by
+  apply eq_of_π_P
+  have hx : R (w ^^^ s.toUInt64) = π (msgPoly [(w ^^^ s.toUInt64).toUInt8,
+      ((w ^^^ s.toUInt64) >>> 8).toUInt8, ((w ^^^ s.toUInt64) >>> 16).toUInt8,
+      ((w ^^^ s.toUInt64) >>> 24).toUInt8, ((w ^^^ s.toUInt64) >>> 32).toUInt8,
+      ((w ^^^ s.toUInt64) >>> 40).toUInt8, ((w ^^^ s.toUInt64) >>> 48).toUInt8,
+      ((w ^^^ s.toUInt64) >>> 56).toUInt8]) := by
+    rw [← polyR_word64, BvDecide.word64_bytes]
+  rw [R_xor] at hx
+  have hs : R s.toUInt64 = π (P s) * π X ^ 32 := by
+    show π (polyR s.toUInt64.toBitVec) = _
+    rw [polyR_toUInt64, map_mul, map_pow]
+  rw [hs] at hx
+  simp only [msgPoly, List.length_cons, List.length_nil, map_add, map_mul, map_pow, map_zero] at hx
+  rw [π_P_stepWord]
+  simp only [stepWordT, P_xor, map_add, π_P_tbl]
+  linear_combination (-(π X ^ 32)) * hx
+
+/-! ### The bytewise loop -/
+
+theorem bytesLoop_eq (a : ByteArray) (hs : a.size < USize.size) (stop : USize)
+    (hstop : stop.toNat ≤ a.size) :
+    ∀ (k : Nat) (i : USize) (s : UInt32), stop.toNat - i.toNat = k →
+      bytesLoop a i stop hstop s = rawExtend s (bytes a i.toNat stop.toNat) := by
+  intro k
+  induction k with
+  | zero =>
+    intro i s hk
+    have hn : ¬ i < stop := by rw [USize.lt_iff_toNat_lt]; omega
+    rw [bytesLoop]
+    simp only [hn, ↓reduceDIte]
+    rw [bytes_of_le a (by omega)]
+    rfl
+  | succ k ih =>
+    intro i s hk
+    have hlt : i < stop := by rw [USize.lt_iff_toNat_lt]; omega
+    have h1 : (i + 1).toNat = i.toNat + 1 := usize_add_toNat i 1 (by omega)
+    rw [bytesLoop]
+    simp only [hlt, ↓reduceDIte]
+    rw [stepByteT_eq, ih _ _ (by omega), h1, bytes_cons a i.toNat stop.toNat (by omega) hstop]
+    rfl
+
+/-! ### The short-input loop -/
+
+theorem rawExtend_load (a : ByteArray) (i : USize) (hs : a.size < USize.size) (m : Nat)
+    (h : i.toNat + 8 + m ≤ a.size) (s : UInt32) :
+    rawExtend s (bytes a i.toNat (i.toNat + 8 + m)) =
+      rawExtend (stepWord s (load64 a i hs (by omega))) (bytes a (i.toNat + 8) (i.toNat + 8 + m)) := by
+  apply eq_of_π_P
+  rw [π_P_rawExtend, π_P_rawExtend, π_P_stepWord, msgPoly_bytes_load a i hs m h,
+    length_bytes a _ _ h, length_bytes a _ _ h]
+  have e1 : i.toNat + 8 + m - i.toNat = 8 + m := by omega
+  have e2 : i.toNat + 8 + m - (i.toNat + 8) = m := by omega
+  rw [e1, e2]
+  simp only [map_add, map_mul, map_pow]
+  ring
+
+theorem sliceLoop_eq (a : ByteArray) (hs : a.size < USize.size) (fin : USize)
+    (hfin : fin.toNat ≤ a.size) :
+    ∀ (k : Nat) (i : USize) (hi : i.toNat ≤ fin.toNat) (s : UInt32), fin.toNat - i.toNat = k →
+      sliceLoop a hs i fin hi hfin s = rawExtend s (bytes a i.toNat fin.toNat) := by
+  intro k
+  induction k using Nat.strong_induction_on with
+  | _ k ih =>
+    intro i hi s hk
+    have hsub : (fin - i).toNat = fin.toNat - i.toNat :=
+      USize.toNat_sub_of_le fin i (USize.le_iff_toNat_le.mpr hi)
+    have e8 : (8 : USize).toNat = 8 := by simp
+    rw [sliceLoop]
+    by_cases h : 8 ≤ fin - i
+    · have h' : 8 ≤ fin.toNat - i.toNat := by
+        have := USize.le_iff_toNat_le.mp h
+        rw [hsub, e8] at this; exact this
+      have h8 : (i + 8).toNat = i.toNat + 8 := usize_add_toNat i 8 (by omega)
+      simp only [h, ↓reduceDIte]
+      rw [ih (fin.toNat - (i + 8).toNat) (by omega) (i + 8) (by omega) _ rfl, stepWordT_eq, h8]
+      obtain ⟨m, hm⟩ : ∃ m, fin.toNat = i.toNat + 8 + m := ⟨fin.toNat - i.toNat - 8, by omega⟩
+      rw [hm, rawExtend_load a i hs m (by omega)]
+    · simp only [h, ↓reduceDIte]
+      rw [bytesLoop_eq a hs fin hfin _ _ _ rfl]
 
 /-! ### The reduction step -/
 
@@ -226,16 +317,12 @@ theorem fold209_spec (a : ByteArray) (hs : a.size < USize.size) (stop fin : USiz
       have eT : fin.toNat - stop.toNat - 32 = T := by omega
       have eL : fin.toNat - (stop.toNat + 32) = T := by omega
       rw [bytesLoop_eq a hs fin hfin _ _ _ rfl, π_P_rawExtend, h32, hlen]
-      simp only [π_P_stepWord, P_zero, map_zero, zero_mul, zero_add, R_xor, heq, eT, eL]
+      simp only [stepWordT_eq, π_P_stepWord, P_zero, map_zero, zero_mul, zero_add, R_xor, heq, eT, eL]
       rw [m0, m1, m2, m3]
       simp only [W, map_add, map_mul, map_pow]
       ring
 
 /-! ### `fast_eq_ref` for the portable path -/
-
-theorem polyR_toUInt64 (s : UInt32) : polyR s.toUInt64.toBitVec = P s * X ^ 32 := by
-  have : s.toUInt64.toBitVec = s.toBitVec.setWidth 64 := by simp
-  rw [this, polyR_setWidth (by omega)]
 
 /-- The portable path computes the reference update on any in-bounds range. -/
 theorem rawExtendPortable_eq (s : UInt32) (a : ByteArray) (off len : Nat)
@@ -257,7 +344,7 @@ theorem rawExtendPortable_eq (s : UInt32) (a : ByteArray) (off len : Nat)
       simp only [W, R, R_zero, polyR_toUInt64, map_mul, map_pow, zero_mul, add_zero]
       ring
     · simp only [h40, ↓reduceDIte]
-      rw [bytesLoop_eq a hs _ _ _ _ _ rfl, ho, hf]
+      rw [sliceLoop_eq a hs _ _ _ _ _ _ rfl, ho, hf]
   · simp only [hs, ↓reduceDIte, bytes_extract]
 
 /-- `fast_eq_ref`, portable path: equal to the bitwise reference on every input. -/
