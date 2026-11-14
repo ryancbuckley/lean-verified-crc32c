@@ -6,6 +6,7 @@ import SimdModels.Poly
 import SimdModels.PolyShift
 import SimdModels.Models
 import Mathlib.Tactic.LinearCombination
+import Mathlib.Algebra.Polynomial.Reverse
 
 namespace SimdModels
 open Polynomial
@@ -201,5 +202,85 @@ theorem clmul_spec (a b : UInt64) :
       polyN a.toBitVec * polyN b.toBitVec := by
   simp only [Model.clmulLo, Model.clmulHi]
   rw [← polynomialMult_spec, polyN_halves (Model.polynomialMult a.toBitVec b.toBitVec)]
+
+/-! ### Carry-less multiply on bit-reflected data
+
+CRC kernels hold data bit-reflected. Multiplying two reflected 64-bit values
+gives the reflected product shifted by one: the extra factor `X`. -/
+
+theorem natDegree_polyN_le {w : Nat} (v : BitVec w) : (polyN v).natDegree ≤ w - 1 := by
+  rw [natDegree_le_iff_coeff_eq_zero]
+  intro N hN
+  rw [coeff_polyN]
+  have : ¬ N < w := by omega
+  simp [this]
+
+/-- The reflected view is the polynomial reversal of the natural view. -/
+theorem polyR_eq_reflect {w : Nat} (v : BitVec w) : polyR v = reflect (w - 1) (polyN v) := by
+  ext k
+  rw [coeff_reflect, coeff_polyR, coeff_polyN]
+  by_cases hk : k ≤ w - 1
+  · rw [revAt_le hk]
+    by_cases hw : w = 0
+    · subst hw; simp
+    · have h1 : k < w := by omega
+      have h2 : w - 1 - k < w := by omega
+      simp [h1, h2]
+  · have h1 : ¬ k < w := by omega
+    have h2 : revAt (w - 1) k = k := revAt_eq_self_of_lt (by omega)
+    simp [h1, h2]
+
+theorem reflect_succ_of_natDegree_le (N : Nat) (p : (ZMod 2)[X]) (hp : p.natDegree ≤ N) :
+    reflect (N + 1) p = X * reflect N p := by
+  ext k
+  rw [coeff_reflect]
+  cases k with
+  | zero =>
+    rw [coeff_X_mul_zero, revAt_le (by omega)]
+    exact coeff_eq_zero_of_natDegree_lt (by omega)
+  | succ j =>
+    rw [coeff_X_mul, coeff_reflect]
+    by_cases hj : j ≤ N
+    · rw [revAt_le (by omega), revAt_le hj]
+      congr 1
+      omega
+    · have e1 : revAt (N + 1) (j + 1) = j + 1 := revAt_eq_self_of_lt (by omega)
+      have e2 : revAt N j = j := revAt_eq_self_of_lt (by omega)
+      rw [e1, e2, coeff_eq_zero_of_natDegree_lt (by omega),
+        coeff_eq_zero_of_natDegree_lt (by omega)]
+
+/-- A 128-bit value in the reflected view: the low half is the high-degree part. -/
+theorem polyR_halves (x : BitVec 128) :
+    polyR x = polyR (x.setWidth 64) * X ^ 64 + polyR ((x >>> 64).setWidth 64) := by
+  ext k
+  rw [coeff_add, coeff_mul_X_pow', coeff_polyR, coeff_polyR, coeff_polyR,
+    BitVec.getLsbD_setWidth, BitVec.getLsbD_setWidth, BitVec.getLsbD_ushiftRight]
+  by_cases hk : k < 64
+  · have h1 : ¬ 64 ≤ k := by omega
+    have h2 : k < 128 := by omega
+    have h3 : 64 - 1 - k < 64 := by omega
+    have h4 : 64 + (64 - 1 - k) = 128 - 1 - k := by omega
+    simp [hk, h1, h2, h3, h4]
+  · have h1 : 64 ≤ k := by omega
+    by_cases h2 : k < 128
+    · have h3 : k - 64 < 64 := by omega
+      have h4 : 64 - 1 - (k - 64) < 64 := by omega
+      have h5 : 64 - 1 - (k - 64) = 128 - 1 - k := by omega
+      have h6 : 127 - k < 64 := by omega
+      simp [hk, h1, h2, h3, h5, h6]
+    · have h3 : ¬ k - 64 < 64 := by omega
+      simp [hk, h1, h2, h3]
+
+/-- The two halves of the carry-less product, reflected view. -/
+theorem clmul_spec_reflected (a b : UInt64) :
+    polyR (Model.clmulLo a b).toBitVec * X ^ 64 + polyR (Model.clmulHi a b).toBitVec =
+      X * (polyR a.toBitVec * polyR b.toBitVec) := by
+  simp only [Model.clmulLo, Model.clmulHi]
+  rw [← polyR_halves, polyR_eq_reflect, polynomialMult_spec, polyR_eq_reflect a.toBitVec,
+    polyR_eq_reflect b.toBitVec]
+  have ha := natDegree_polyN_le a.toBitVec
+  have hb := natDegree_polyN_le b.toBitVec
+  rw [← reflect_mul _ _ ha hb]
+  exact reflect_succ_of_natDegree_le 126 _ (le_trans natDegree_mul_le (by omega))
 
 end SimdModels

@@ -40,6 +40,7 @@ open Crc32c
 -- Phase 3: instruction-model semantics and their link to the reference.
 #print axioms SimdModels.crc32c_spec
 #print axioms SimdModels.clmul_spec
+#print axioms SimdModels.clmul_spec_reflected
 #print axioms G_eq_castagnoli
 #print axioms crc32c_u64_eq
 #print axioms crc32c_u8_eq
