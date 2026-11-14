@@ -13,11 +13,14 @@ path = "lean-simd-models"
 
 [[lean_lib]]
 name = "MemcpyCrc32c"
+moreLeancArgs = ["-include", "lean-simd-models/c/simd_shim.h"]
 
 [[lean_exe]]
 name = "diff"
 root = "tests.Diff"
+moreLeancArgs = ["-include", "lean-simd-models/c/simd_shim.h"]
 
 [[lean_exe]]
 name = "bench_portable"
 root = "tests.BenchPortable"
+moreLeancArgs = ["-include", "lean-simd-models/c/simd_shim.h"]

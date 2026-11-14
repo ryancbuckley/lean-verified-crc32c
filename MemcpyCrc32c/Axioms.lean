@@ -8,7 +8,7 @@ Every Phase 1 and Phase 2 theorem depends only on Lean's standard axioms
 -/
 import MemcpyCrc32c.Vectors
 import MemcpyCrc32c.Portable
-import MemcpyCrc32c.Hw
+import MemcpyCrc32c.HwKernel
 
 open Crc32c
 
@@ -44,3 +44,9 @@ open Crc32c
 #print axioms G_eq_castagnoli
 #print axioms crc32c_u64_eq
 #print axioms crc32c_u8_eq
+
+-- Phase 4 (AArch64 track): hardware-CRC kernel. Rests on the trusted bindings in
+-- `SimdModels.Trusted`, which `#print axioms` cannot show.
+#print axioms rawExtendHw_eq
+#print axioms extendHw_eq_extend
+#print axioms extendHw_eq_spec

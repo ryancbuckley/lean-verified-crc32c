@@ -5,6 +5,7 @@ Exits non-zero on the first mismatch.
 -/
 import MemcpyCrc32c.Impl.Arith
 import MemcpyCrc32c.Impl.Portable
+import MemcpyCrc32c.Impl.Hw
 
 open Crc32c
 
@@ -32,6 +33,7 @@ def check (line : String) : Except String Unit := do
     let w := u32 want
     fail (extend c bs) w
     fail (extendPortable c bs) w
+    fail (extendHw c bs) w
   | ["Z", c, n, want] => fail (extendZeroes (u32 c) n.toNat!) (u32 want)
   | ["C", a, b, n, want] => fail (concat (u32 a) (u32 b) n.toNat!) (u32 want)
   | ["P", a, b, n, want] => fail (removePrefix (u32 a) (u32 b) n.toNat!) (u32 want)

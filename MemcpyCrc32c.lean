@@ -8,4 +8,5 @@ import MemcpyCrc32c.PolyShift
 import MemcpyCrc32c.Word64
 import MemcpyCrc32c.Portable
 import MemcpyCrc32c.Hw
+import MemcpyCrc32c.HwKernel
 import MemcpyCrc32c.Axioms
