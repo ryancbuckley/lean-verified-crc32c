@@ -15,14 +15,27 @@ def mkBuf (n : Nat) : ByteArray := Id.run do
   return b
 
 def main : IO Unit := do
-  -- agreement with the bitwise reference on a spread of sizes
-  let small := mkBuf 5000
+  -- agreement with the bitwise reference across short, medium, and ≥8 KiB 4-stream ranges
+  let small := mkBuf 20000
   for n in [0:700] do
     let a := small.extract (n % 7) (n % 7 + n * 7)
     let c : UInt32 := 0x12345678 + n.toUInt32
     if extendPortable c a != extend c a then
       IO.eprintln s!"MISMATCH n={a.size}"; IO.Process.exit 1
+  for k in [0:64] do
+    let off := k % 11
+    let len := 8192 + k * 137
+    let a := small.extract off (off + len)
+    let c : UInt32 := 0x9E3779B9 + k.toUInt32
+    if extendPortable c a != extend c a then
+      IO.eprintln s!"MISMATCH 4x n={a.size}"; IO.Process.exit 1
   IO.println "portable path agrees with the bitwise reference"
+  -- warm up (~30 ms) so macOS schedules the benchmark thread onto a P-core before timing 16 B
+  let warmBuf := mkBuf 65536
+  let mut warmSink : UInt32 := 0
+  for _ in [0:6000] do
+    warmSink := extendPortable warmSink warmBuf
+  if warmSink == 0xDEADBEEF then IO.println ""
   for n in [16, 64, 256, 1024, 4096, 65536, 1048576, 67108864] do
     let a := mkBuf n
     let reps := max 3 (min 200000 (67108864 / n))

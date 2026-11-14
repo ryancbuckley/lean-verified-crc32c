@@ -35,20 +35,45 @@ static uint32_t raw_table1(uint32_t s, const uint8_t *p, size_t n) {
 
 static inline uint64_t ld(const uint8_t *p) { uint64_t w; memcpy(&w, p, 8); return w; }
 
+static inline uint32_t step_word_slice8(uint32_t s, uint64_t w) {
+  w ^= s;
+  return T[7][w & 0xff] ^ T[6][(w >> 8) & 0xff] ^ T[5][(w >> 16) & 0xff] ^ T[4][(w >> 24) & 0xff] ^
+         T[3][(w >> 32) & 0xff] ^ T[2][(w >> 40) & 0xff] ^ T[1][(w >> 48) & 0xff] ^ T[0][w >> 56];
+}
+
 static uint32_t raw_slice8(uint32_t s, const uint8_t *p, size_t n) {
   while (n >= 8) {
-    uint64_t w = ld(p) ^ s;
-    s = T[7][w & 0xff] ^ T[6][(w >> 8) & 0xff] ^ T[5][(w >> 16) & 0xff] ^ T[4][(w >> 24) & 0xff] ^
-        T[3][(w >> 32) & 0xff] ^ T[2][(w >> 40) & 0xff] ^ T[1][(w >> 48) & 0xff] ^ T[0][w >> 56];
+    s = step_word_slice8(s, ld(p));
     p += 8; n -= 8;
   }
   return raw_table1(s, p, n);
 }
 
-// Register kernel for Z = x^209 + x^144 + x^54 + x^39 + x^14 + 1.
-// Each word moves 65, 155, 170, 195 and 209 bits later in the stream.
+static inline uint32_t mul_mod(uint32_t a, uint32_t b) {
+  uint32_t acc = 0;
+  for (int i = 0; i < 32; i++) {
+    if (b & 0x80000000u) acc ^= a;
+    b <<= 1;
+    a = (a >> 1) ^ ((a & 1) ? POLY : 0);
+  }
+  return acc;
+}
+
+static uint32_t pow_mod_x64(size_t ws) {
+  uint32_t a = 0x00800000u;
+  for (int k = 0; k < 3; k++) a = mul_mod(a, a);  // X^64 mod G
+  uint32_t r = 0x80000000u;
+  while (ws) {
+    if (ws & 1) r = mul_mod(r, a);
+    a = mul_mod(a, a);
+    ws >>= 1;
+  }
+  return r;
+}
+
+// Single-stream register kernel for Z = x^209 + x^144 + x^54 + x^39 + x^14 + 1.
 static uint32_t raw_reg209(uint32_t s, const uint8_t *p, size_t n) {
-  if (n < 40) return raw_table1(s, p, n);
+  if (n < 40) return raw_slice8(s, p, n);
   size_t nw = n / 8;
   uint64_t n1 = s, n2 = 0, n3 = 0, n4 = 0;
   size_t i = 0;
@@ -59,10 +84,64 @@ static uint32_t raw_reg209(uint32_t s, const uint8_t *p, size_t n) {
     n3 = n4 ^ (v >> 37) ^ (v >> 22) ^ (v << 3) ^ (v << 17);
     n4 = (v >> 61) ^ (v >> 47);
   }
-  uint64_t f[4] = {ld(p + 8 * i) ^ n1, ld(p + 8 * i + 8) ^ n2, ld(p + 8 * i + 16) ^ n3,
-                   ld(p + 8 * i + 24) ^ n4};
-  uint32_t c = raw_table1(0, (const uint8_t *)f, 32);
+  uint32_t c = step_word_slice8(0, ld(p + 8 * i) ^ n1);
+  c = step_word_slice8(c, ld(p + 8 * i + 8) ^ n2);
+  c = step_word_slice8(c, ld(p + 8 * i + 16) ^ n3);
+  c = step_word_slice8(c, ld(p + 8 * i + 24) ^ n4);
   return raw_table1(c, p + 8 * nw, n - 8 * nw);
+}
+
+// 4-stream interleaved register kernel matching MemcpyCrc32c/Impl/Portable.lean.
+static uint32_t raw_reg209_4x(uint32_t s, const uint8_t *p, size_t n) {
+  if (n < 8192) return raw_reg209(s, p, n);
+  size_t ws = n / 32;
+  size_t L = ws * 8;
+  uint64_t a1 = s, a2 = 0, a3 = 0, a4 = 0;
+  uint64_t b1 = 0, b2 = 0, b3 = 0, b4 = 0;
+  uint64_t c1 = 0, c2 = 0, c3 = 0, c4 = 0;
+  uint64_t d1 = 0, d2 = 0, d3 = 0, d4 = 0;
+  size_t i = 0;
+  for (; i + 4 < ws; i++) {
+    uint64_t va = ld(p + 8 * i) ^ a1;
+    a1 = a2 ^ (va << 1);
+    a2 = a3 ^ (va >> 63) ^ (va << 27) ^ (va << 42);
+    a3 = a4 ^ (va >> 37) ^ (va >> 22) ^ (va << 3) ^ (va << 17);
+    a4 = (va >> 61) ^ (va >> 47);
+    uint64_t vb = ld(p + L + 8 * i) ^ b1;
+    b1 = b2 ^ (vb << 1);
+    b2 = b3 ^ (vb >> 63) ^ (vb << 27) ^ (vb << 42);
+    b3 = b4 ^ (vb >> 37) ^ (vb >> 22) ^ (vb << 3) ^ (vb << 17);
+    b4 = (vb >> 61) ^ (vb >> 47);
+    uint64_t vc = ld(p + 2 * L + 8 * i) ^ c1;
+    c1 = c2 ^ (vc << 1);
+    c2 = c3 ^ (vc >> 63) ^ (vc << 27) ^ (vc << 42);
+    c3 = c4 ^ (vc >> 37) ^ (vc >> 22) ^ (vc << 3) ^ (vc << 17);
+    c4 = (vc >> 61) ^ (vc >> 47);
+    uint64_t vd = ld(p + 3 * L + 8 * i) ^ d1;
+    d1 = d2 ^ (vd << 1);
+    d2 = d3 ^ (vd >> 63) ^ (vd << 27) ^ (vd << 42);
+    d3 = d4 ^ (vd >> 37) ^ (vd >> 22) ^ (vd << 3) ^ (vd << 17);
+    d4 = (vd >> 61) ^ (vd >> 47);
+  }
+  uint32_t sa = step_word_slice8(0, ld(p + 8 * i) ^ a1);
+  sa = step_word_slice8(sa, ld(p + 8 * i + 8) ^ a2);
+  sa = step_word_slice8(sa, ld(p + 8 * i + 16) ^ a3);
+  sa = step_word_slice8(sa, ld(p + 8 * i + 24) ^ a4);
+  uint32_t sb = step_word_slice8(0, ld(p + L + 8 * i) ^ b1);
+  sb = step_word_slice8(sb, ld(p + L + 8 * i + 8) ^ b2);
+  sb = step_word_slice8(sb, ld(p + L + 8 * i + 16) ^ b3);
+  sb = step_word_slice8(sb, ld(p + L + 8 * i + 24) ^ b4);
+  uint32_t sc = step_word_slice8(0, ld(p + 2 * L + 8 * i) ^ c1);
+  sc = step_word_slice8(sc, ld(p + 2 * L + 8 * i + 8) ^ c2);
+  sc = step_word_slice8(sc, ld(p + 2 * L + 8 * i + 16) ^ c3);
+  sc = step_word_slice8(sc, ld(p + 2 * L + 8 * i + 24) ^ c4);
+  uint32_t sd = step_word_slice8(0, ld(p + 3 * L + 8 * i) ^ d1);
+  sd = step_word_slice8(sd, ld(p + 3 * L + 8 * i + 8) ^ d2);
+  sd = step_word_slice8(sd, ld(p + 3 * L + 8 * i + 16) ^ d3);
+  sd = step_word_slice8(sd, ld(p + 3 * L + 8 * i + 24) ^ d4);
+  uint32_t f = pow_mod_x64(ws);
+  uint32_t s4 = mul_mod(mul_mod(mul_mod(sa, f) ^ sb, f) ^ sc, f) ^ sd;
+  return raw_slice8(s4, p + 4 * L, n - 4 * L);
 }
 
 // Word-aligned kernel for Z^64: v[i] = in[i] ^ v[i-65] ^ v[i-155] ^ v[i-170] ^ v[i-195] ^ v[i-209].
@@ -116,15 +195,17 @@ int main(void) {
   uint64_t x = 88172645463325252ull;
   for (size_t i = 0; i < maxn; i++) { x ^= x << 13; x ^= x >> 7; x ^= x << 17; buf[i] = (uint8_t)x; }
   struct { const char *name; fn f; } ks[] = {
-      {"table1", raw_table1}, {"slice8", raw_slice8}, {"reg209", raw_reg209}, {"xor209", raw_xor209}};
+      {"table1", raw_table1}, {"slice8", raw_slice8}, {"reg209", raw_reg209},
+      {"reg209_4x", raw_reg209_4x}, {"xor209", raw_xor209}};
+  int nk = (int)(sizeof(ks) / sizeof(ks[0]));
   // correctness
-  for (int k = 0; k < 4; k++)
-    for (size_t n = 0; n < 6000; n += (n < 600 ? 1 : 37)) {
+  for (int k = 0; k < nk; k++)
+    for (size_t n = 0; n < 20000; n += (n < 600 ? 1 : 137)) {
       uint32_t want = raw_bitwise(0x12345678u + (uint32_t)n, buf + (n % 7), n);
       uint32_t got = ks[k].f(0x12345678u + (uint32_t)n, buf + (n % 7), n);
       if (want != got) { printf("MISMATCH %s n=%zu\n", ks[k].name, n); return 1; }
     }
-  for (int k = 1; k < 4; k++)
+  for (int k = 1; k < nk; k++)
     if (ks[k].f(7, buf, 1 << 20) != raw_table1(7, buf, 1 << 20)) { printf("MISMATCH %s 1MiB\n", ks[k].name); return 1; }
   printf("all kernels agree with the bitwise reference\n");
   size_t sizes[] = {16, 64, 256, 1024, 4096, 65536, 1 << 20, 64 << 20};
@@ -132,8 +213,8 @@ int main(void) {
   for (int s = 0; s < 8; s++) printf("%10zu", sizes[s]);
   printf("\n");
   volatile uint32_t sink = 0;
-  for (int k = 0; k < 5; k++) {
-    printf("%-10s", k < 4 ? ks[k].name : "memcpy");
+  for (int k = 0; k <= nk; k++) {
+    printf("%-10s", k < nk ? ks[k].name : "memcpy");
     for (int s = 0; s < 8; s++) {
       size_t n = sizes[s];
       size_t reps = (64u << 20) / n; if (reps > 200000) reps = 200000; if (reps < 3) reps = 3;
@@ -141,7 +222,7 @@ int main(void) {
       for (int r = 0; r < 9; r++) {
         double a = now();
         for (size_t q = 0; q < reps; q++) {
-          if (k < 4) sink ^= ks[k].f(sink, buf, n); else { memcpy(dst, buf, n); sink ^= dst[n / 2]; }
+          if (k < nk) sink ^= ks[k].f(sink, buf, n); else { memcpy(dst, buf, n); sink ^= dst[n / 2]; }
         }
         t[r] = (now() - a) / reps;
       }

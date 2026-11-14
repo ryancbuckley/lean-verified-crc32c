@@ -31,9 +31,11 @@ int main(int argc, char** argv) {
     return s;
   };
   auto len = [&]() -> size_t {
-    switch (rng() % 4) {
+    switch (rng() % 8) {
       case 0: return rng() % 17;
-      case 1: return rng() % 300;
+      case 1:
+      case 2: return rng() % 300;
+      case 3: return 8192 + rng() % 12000;
       default: return rng() % 2000;
     }
   };

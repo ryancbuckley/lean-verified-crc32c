@@ -4,10 +4,10 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 N="${1:-20000}"; shift || true
-SEEDS=("${@:-1 2 3}")
+if (($# > 0)); then SEEDS=("$@"); else SEEDS=(1 2 3); fi
 [ -x build/absl/absl_gen ] || tests/build_absl.sh
 lake build diff >/dev/null
-for seed in ${SEEDS[@]}; do
+for seed in "${SEEDS[@]}"; do
   echo -n "seed $seed: "
   build/absl/absl_gen "$seed" "$N" | .lake/build/bin/diff
 done
