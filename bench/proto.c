@@ -127,16 +127,16 @@ int main(void) {
   for (int k = 1; k < 4; k++)
     if (ks[k].f(7, buf, 1 << 20) != raw_table1(7, buf, 1 << 20)) { printf("MISMATCH %s 1MiB\n", ks[k].name); return 1; }
   printf("all kernels agree with the bitwise reference\n");
-  size_t sizes[] = {256, 4096, 65536, 1 << 20, 64 << 20};
+  size_t sizes[] = {16, 64, 256, 1024, 4096, 65536, 1 << 20, 64 << 20};
   printf("%-10s", "GB/s");
-  for (int s = 0; s < 5; s++) printf("%10zu", sizes[s]);
+  for (int s = 0; s < 8; s++) printf("%10zu", sizes[s]);
   printf("\n");
   volatile uint32_t sink = 0;
   for (int k = 0; k < 5; k++) {
     printf("%-10s", k < 4 ? ks[k].name : "memcpy");
-    for (int s = 0; s < 5; s++) {
+    for (int s = 0; s < 8; s++) {
       size_t n = sizes[s];
-      size_t reps = (64u << 20) / n; if (reps > 20000) reps = 20000; if (reps < 3) reps = 3;
+      size_t reps = (64u << 20) / n; if (reps > 200000) reps = 200000; if (reps < 3) reps = 3;
       double t[9];
       for (int r = 0; r < 9; r++) {
         double a = now();

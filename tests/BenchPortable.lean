@@ -23,9 +23,9 @@ def main : IO Unit := do
     if extendPortable c a != extend c a then
       IO.eprintln s!"MISMATCH n={a.size}"; IO.Process.exit 1
   IO.println "portable path agrees with the bitwise reference"
-  for n in [256, 4096, 65536, 1048576, 67108864] do
+  for n in [16, 64, 256, 1024, 4096, 65536, 1048576, 67108864] do
     let a := mkBuf n
-    let reps := max 3 (min 20000 (67108864 / n))
+    let reps := max 3 (min 200000 (67108864 / n))
     let mut times : Array Nat := #[]
     let mut sink : UInt32 := 0
     for _ in [0:9] do
