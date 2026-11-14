@@ -90,8 +90,33 @@ theorem π_P_mulMod_go (n : Nat) (a b acc : UInt32)
         have := hb i (by omega)
         simp [this]
 
+theorem mulModU32_eq_go (n a b acc : UInt32) :
+    mulModU32 n a b acc = mulMod.go n.toNat a b acc := by
+  have h : ∀ (k : Nat) (n a b acc : UInt32), n.toNat = k →
+      mulModU32 n a b acc = mulMod.go k a b acc := by
+    intro k
+    induction k with
+    | zero =>
+      intro n a b acc hk
+      have h0 : n = 0 := by rw [← n.ofNat_toNat, hk]; rfl
+      subst h0; rw [mulModU32]; simp [mulMod.go]
+    | succ k ih =>
+      intro n a b acc hk
+      have hn0 : n ≠ 0 := fun h0 => by subst h0; simp at hk
+      have hle : 1#32 ≤ n.toBitVec := BitVec.le_def.mpr (by show 1 ≤ n.toNat; omega)
+      have hsub : (n - 1).toNat = k := by
+        show (n.toBitVec - 1#32).toNat = k
+        rw [BitVec.toNat_sub_of_le hle]
+        show n.toNat - 1 = k
+        omega
+      rw [mulModU32, mulMod.go]
+      simp only [hn0, ↓reduceDIte]
+      exact ih (n - 1) _ _ _ hsub
+  exact h n.toNat n a b acc rfl
+
 theorem π_P_mulMod (a b : UInt32) : π (P (mulMod a b)) = π (P a) * π (P b) := by
-  rw [mulMod, π_P_mulMod_go 32 a b 0 (fun i hi => by omega), P_zero]
+  have e32 : (32 : UInt32).toNat = 32 := rfl
+  rw [mulMod, mulModU32_eq_go, e32, π_P_mulMod_go 32 a b 0 (fun i hi => by omega), P_zero]
   simp
 
 theorem polyR_twoPow {w i : Nat} (hi : i < w) :
@@ -114,21 +139,54 @@ theorem P_x8 : P x8 = X ^ 8 := by
   change polyR (BitVec.twoPow 32 23) = X ^ 8
   simp [polyR_twoPow]
 
-theorem π_P_powMod (a : UInt32) (n : Nat) : π (P (powMod a n)) = π (P a) ^ n := by
-  induction n using Nat.strong_induction_on with
+theorem powModU64_eq_go (a acc : UInt32) (n : UInt64) :
+    powModU64 a acc n = powMod.go a acc n.toNat := by
+  have h : ∀ (k : Nat) (a acc : UInt32) (n : UInt64), n.toNat = k →
+      powModU64 a acc n = powMod.go a acc n.toNat := by
+    intro k
+    induction k using Nat.strong_induction_on with
+    | _ k ih =>
+      intro a acc n hk
+      rw [powModU64, powMod.go]
+      by_cases h0 : n = 0
+      · subst h0; simp
+      · have hn0 : n.toNat ≠ 0 := fun h => h0 (by rw [← n.ofNat_toNat, h]; rfl)
+        have hs : (n >>> 1).toNat = n.toNat / 2 := by rw [UInt64.toNat_shiftRight]; rfl
+        have hand : (n &&& 1 = 1) ↔ (n.toNat % 2 = 1) := by
+          have e : (n &&& 1).toNat = n.toNat % 2 := by
+            change (n.toBitVec &&& 1#64).toNat = n.toNat % 2
+            rw [BitVec.toNat_and]
+            exact Nat.and_one_is_mod n.toNat
+          constructor
+          · intro h1; rw [← e, h1]; rfl
+          · intro h1; rw [← (n &&& 1).ofNat_toNat, e, h1]; rfl
+        simp only [h0, hn0, ↓reduceDIte, ↓reduceIte, hand]
+        rw [ih (n.toNat / 2) (by omega) _ _ (n >>> 1) hs, hs]
+  exact h n.toNat a acc n rfl
+
+theorem π_P_powMod_go (a acc : UInt32) (n : Nat) :
+    π (P (powMod.go a acc n)) = π (P acc) * π (P a) ^ n := by
+  induction n using Nat.strong_induction_on generalizing a acc with
   | _ n ih =>
-    rw [powMod]
+    rw [powMod.go]
     by_cases hn : n = 0
-    · simp [hn, P_one]
-    · have hlt : n / 2 < n := by omega
-      simp only [hn, ↓reduceIte]
+    · simp [hn]
+    · simp only [hn, ↓reduceIte, ih (n / 2) (by omega), π_P_mulMod]
       by_cases hodd : n % 2 = 1
-      · simp only [hodd, ↓reduceIte, π_P_mulMod, ih _ hlt]
-        conv_rhs => rw [show n = n / 2 + n / 2 + 1 by omega]
+      · simp only [hodd, ↓reduceIte, π_P_mulMod]
+        conv_rhs => rw [show n = 2 * (n / 2) + 1 by omega, pow_add, pow_mul, pow_one, sq]
         ring
-      · simp only [hodd, ↓reduceIte, π_P_mulMod, ih _ hlt]
-        conv_rhs => rw [show n = n / 2 + n / 2 by omega]
-        ring
+      · simp only [hodd, ↓reduceIte]
+        conv_rhs => rw [show n = 2 * (n / 2) by omega, pow_mul, sq]
+
+theorem π_P_powMod (a : UInt32) (n : Nat) : π (P (powMod a n)) = π (P a) ^ n := by
+  unfold powMod
+  by_cases hle : n ≤ 0xFFFFFFFFFFFFFFFF
+  · have hsize : UInt64.size = 18446744073709551616 := rfl
+    have htn : n.toUInt64.toNat = n := by
+      rw [UInt64.toNat_ofNat_of_lt' (by omega)]
+    simp only [hle, ↓reduceIte, powModU64_eq_go, htn, π_P_powMod_go, P_one, map_one, one_mul]
+  · simp only [hle, ↓reduceIte, π_P_powMod_go, P_one, map_one, one_mul]
 
 theorem stepByte_xInv8 : stepByte xInv8 0 = 0x80000000 := by decide
 

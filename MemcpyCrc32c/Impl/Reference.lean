@@ -7,11 +7,11 @@ the polynomial spec in `MemcpyCrc32c.Bitwise`.
 namespace Crc32c
 
 /-- Advance the state by one zero bit: multiply by `X` modulo `G` (reflected). -/
-def stepBit (s : UInt32) : UInt32 :=
+@[inline] def stepBit (s : UInt32) : UInt32 :=
   (s >>> 1) ^^^ (if s &&& 1 = 1 then 0x82F63B78 else 0)
 
 /-- Absorb one message byte. -/
-def stepByte (s : UInt32) (b : UInt8) : UInt32 :=
+@[inline] def stepByte (s : UInt32) (b : UInt8) : UInt32 :=
   stepBit <| stepBit <| stepBit <| stepBit <| stepBit <| stepBit <| stepBit <| stepBit
     (s ^^^ b.toUInt32)
 
