@@ -13,3 +13,7 @@ name = "MemcpyCrc32c"
 [[lean_exe]]
 name = "diff"
 root = "tests.Diff"
+
+[[lean_exe]]
+name = "bench_portable"
+root = "tests.BenchPortable"

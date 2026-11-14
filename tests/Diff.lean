@@ -4,6 +4,7 @@ tests/absl_gen.cc for the format) and compares them with the Lean functions.
 Exits non-zero on the first mismatch.
 -/
 import MemcpyCrc32c.Impl.Arith
+import MemcpyCrc32c.Impl.Portable
 
 open Crc32c
 
@@ -24,7 +25,9 @@ def check (line : String) : Except String Unit := do
   let fail (got : UInt32) (want : String) : Except String Unit :=
     if got == u32 want then pure () else throw s!"MISMATCH got {got}: {line.take 200}"
   match line.splitOn " " with
-  | ["E", init, bytes, want] => fail (extend (u32 init) (parseHex bytes)) want
+  | ["E", init, bytes, want] =>
+    fail (extend (u32 init) (parseHex bytes)) want
+    fail (extendPortable (u32 init) (parseHex bytes)) want
   | ["M", init, bytes, want] => fail (extend (u32 init) (parseHex bytes)) want
   | ["Z", c, n, want] => fail (extendZeroes (u32 c) n.toNat!) want
   | ["C", a, b, n, want] => fail (concat (u32 a) (u32 b) n.toNat!) want
