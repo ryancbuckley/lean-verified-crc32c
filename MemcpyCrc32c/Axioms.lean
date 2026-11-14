@@ -1,6 +1,10 @@
 /-
 Axiom audit for the headline theorems. The build output of this file is the
 record quoted in each phase report.
+
+Every Phase 1 and Phase 2 theorem depends only on Lean's standard axioms
+(`propext`, `Classical.choice`, `Quot.sound`), with zero `bv_decide` or
+`native_decide` axioms.
 -/
 import MemcpyCrc32c.Vectors
 import MemcpyCrc32c.Portable
@@ -14,13 +18,19 @@ open Crc32c
 #print axioms removePrefix_spec
 #print axioms removeSuffix_spec
 #print axioms extendZeroes_spec
+#print axioms Spec.extend_append
+#print axioms Spec.concat_spec
+#print axioms Spec.removePrefix_spec
+#print axioms Spec.removeSuffix_spec
+#print axioms Spec.extendZeroes_spec
 #print axioms check_123456789
+#print axioms rfc3720_iscsi_read
 #print axioms zeroes_u64max
 #print axioms zero6_209
 #print axioms zero4_5275
 #print axioms modByMonic_add_zeroPoly_mul
 
--- Phase 2: these depend on `Lean.ofReduceBool` via the quarantined `BvDecide` lemmas.
+-- Phase 2: pure kernel proofs as well (no `bv_decide` axioms).
 #print axioms rawExtendPortable_eq
 #print axioms extendPortable_eq_extend
 #print axioms extendPortable_eq_spec

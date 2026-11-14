@@ -94,14 +94,25 @@ theorem π_P_mulMod (a b : UInt32) : π (P (mulMod a b)) = π (P a) * π (P b) :
   rw [mulMod, π_P_mulMod_go 32 a b 0 (fun i hi => by omega), P_zero]
   simp
 
-set_option maxRecDepth 100000 in
-theorem P_one : P 0x80000000 = 1 := by
-  simp +decide [P, polyR, ofBits, Finset.sum_range_succ, BitVec.getLsbD]
+theorem polyR_twoPow {w i : Nat} (hi : i < w) :
+    polyR (BitVec.twoPow w i) = X ^ (w - 1 - i) := by
+  ext k
+  rw [coeff_polyR, coeff_X_pow, BitVec.getLsbD_twoPow]
+  by_cases hk : k = w - 1 - i
+  · subst hk
+    simp [hi, show w - 1 - (w - 1 - i) = i by omega, show w - 1 - i < w by omega]
+  · by_cases hlt : k < w
+    · have hne : i ≠ w - 1 - k := by omega
+      simp [hk, hlt, hne]
+    · simp [hk, hlt]
 
-set_option maxRecDepth 100000 in
+theorem P_one : P 0x80000000 = 1 := by
+  change polyR (BitVec.twoPow 32 31) = 1
+  simp [polyR_twoPow]
+
 theorem P_x8 : P x8 = X ^ 8 := by
-  have e : x8.toBitVec = 0x00800000#32 := rfl
-  simp +decide [P, e, polyR, ofBits, Finset.sum_range_succ, BitVec.getLsbD]
+  change polyR (BitVec.twoPow 32 23) = X ^ 8
+  simp [polyR_twoPow]
 
 theorem π_P_powMod (a : UInt32) (n : Nat) : π (P (powMod a n)) = π (P a) ^ n := by
   induction n using Nat.strong_induction_on with
@@ -209,5 +220,27 @@ theorem extendZeroes_spec (c : UInt32) (n : Nat) :
   apply eq_of_π_P
   simp [extendZeroes, P_xor, π_P_extendZeroesRaw, π_P_extend, msgPoly_replicate_zero,
     ByteArray.size]
+
+/-! ### Direct `Spec` corollaries for Theorems 1 to 5 -/
+
+theorem Spec.extend_append (c : UInt32) (a b : ByteArray) :
+    Spec.extend (Spec.extend c a) b = Spec.extend c (a ++ b) := by
+  simp only [← extend_eq_spec, Crc32c.extend_append]
+
+theorem Spec.concat_spec (a b : ByteArray) :
+    concat (Spec.crc32c a) (Spec.crc32c b) b.size = Spec.crc32c (a ++ b) := by
+  simp only [← crc32c_eq_spec, Crc32c.concat_spec]
+
+theorem Spec.removePrefix_spec (a b : ByteArray) :
+    removePrefix (Spec.crc32c a) (Spec.crc32c (a ++ b)) b.size = Spec.crc32c b := by
+  simp only [← crc32c_eq_spec, Crc32c.removePrefix_spec]
+
+theorem Spec.removeSuffix_spec (a b : ByteArray) :
+    removeSuffix (Spec.crc32c (a ++ b)) (Spec.crc32c b) b.size = Spec.crc32c a := by
+  simp only [← crc32c_eq_spec, Crc32c.removeSuffix_spec]
+
+theorem Spec.extendZeroes_spec (c : UInt32) (n : Nat) :
+    extendZeroes c n = Spec.extend c (ByteArray.mk (Array.replicate n 0)) := by
+  rw [← extend_eq_spec, Crc32c.extendZeroes_spec]
 
 end Crc32c

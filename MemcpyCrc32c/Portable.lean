@@ -1,14 +1,12 @@
 /-
 Proof that the portable path (`MemcpyCrc32c.Impl.Portable`) equals the bitwise
-reference: `fast_eq_ref` for the portable kernel.
-
-Depends on the `bv_decide` axioms of the quarantined word identities in
-`MemcpyCrc32c.BvDecide.Word64`.
+reference: `fast_eq_ref` for the portable kernel. Kernel-only proofs (no
+`bv_decide` or extra axioms).
 -/
 import MemcpyCrc32c.ZeroPoly
 import MemcpyCrc32c.PolyShift
 import MemcpyCrc32c.Impl.Portable
-import MemcpyCrc32c.BvDecide.Word64
+import MemcpyCrc32c.Word64
 
 namespace Crc32c
 open Polynomial
@@ -54,7 +52,7 @@ theorem R_zero : R 0 = 0 := by
 
 theorem polyR_word64 (b0 b1 b2 b3 b4 b5 b6 b7 : UInt8) :
     polyR (word64 b0 b1 b2 b3 b4 b5 b6 b7).toBitVec = msgPoly [b0, b1, b2, b3, b4, b5, b6, b7] := by
-  rw [BvDecide.word64_eq_xor]
+  rw [word64_eq_xor]
   simp only [UInt64.toBitVec_xor, polyR_xor]
   simp [msgPoly, polyR_setWidth (show 8 ≤ 64 by omega),
     polyR_setWidth_shiftLeft (show 8 + 8 ≤ 64 by omega),
@@ -105,7 +103,7 @@ theorem π_P_stepWord (s : UInt32) (w : UInt64) :
   have h : stepWord s w = rawExtend s [w.toUInt8, (w >>> 8).toUInt8, (w >>> 16).toUInt8,
       (w >>> 24).toUInt8, (w >>> 32).toUInt8, (w >>> 40).toUInt8, (w >>> 48).toUInt8,
       (w >>> 56).toUInt8] := rfl
-  rw [h, π_P_rawExtend, ← polyR_word64, BvDecide.word64_bytes]
+  rw [h, π_P_rawExtend, ← polyR_word64, word64_bytes]
   simp
 
 /-! ### Table lookups -/
@@ -133,7 +131,7 @@ theorem stepByteT_eq (s : UInt32) (b : UInt8) : stepByteT s b = stepByte s b := 
   have e2 : ∀ x : UInt32, (x <<< 24).toBitVec = x.toBitVec <<< 24 := by intro x; simp
   have e2' : ∀ c : UInt8, c.toUInt32.toBitVec = c.toBitVec.setWidth 32 := by intro c; simp
   have e3 : s.toBitVec >>> (32 - 24) = (s >>> 8).toBitVec := by simp
-  rw [e1, BvDecide.shl24_eq_lowByte, e2, e2', polyR_setWidth_shiftLeft (by omega), e3] at h
+  rw [e1, shl24_eq_lowByte, e2, e2', polyR_setWidth_shiftLeft (by omega), e3] at h
   simp only [Nat.reduceSub, pow_zero, mul_one] at h
   have h' := congrArg π h
   simp only [map_add, map_mul, map_pow] at h'
@@ -149,7 +147,7 @@ theorem stepWordT_eq (s : UInt32) (w : UInt64) : stepWordT s w = stepWord s w :=
       ((w ^^^ s.toUInt64) >>> 24).toUInt8, ((w ^^^ s.toUInt64) >>> 32).toUInt8,
       ((w ^^^ s.toUInt64) >>> 40).toUInt8, ((w ^^^ s.toUInt64) >>> 48).toUInt8,
       ((w ^^^ s.toUInt64) >>> 56).toUInt8]) := by
-    rw [← polyR_word64, BvDecide.word64_bytes]
+    rw [← polyR_word64, word64_bytes]
   rw [R_xor] at hx
   have hs : R s.toUInt64 = π (P s) * π X ^ 32 := by
     show π (polyR s.toUInt64.toBitVec) = _

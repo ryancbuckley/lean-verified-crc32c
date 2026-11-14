@@ -15,10 +15,9 @@ open Polynomial
 /-- `X`, reflected. -/
 def x1 : UInt32 := 0x40000000
 
-set_option maxRecDepth 100000 in
 theorem P_x1 : P x1 = X := by
-  have e : x1.toBitVec = 0x40000000#32 := rfl
-  simp +decide [P, e, polyR, ofBits, Finset.sum_range_succ, BitVec.getLsbD]
+  change polyR (BitVec.twoPow 32 30) = X
+  simp [polyR_twoPow]
 
 theorem π_X_pow (n : Nat) : π X ^ n = π (P (powMod x1 n)) := by
   rw [π_P_powMod, P_x1]

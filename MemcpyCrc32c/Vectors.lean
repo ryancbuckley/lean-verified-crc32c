@@ -12,6 +12,9 @@ def crcList (bs : List UInt8) : UInt32 := rawExtend 0xFFFFFFFF bs ^^^ 0xFFFFFFFF
 theorem crc32c_eq_crcList (bs : ByteArray) : crc32c bs = crcList bs.data.toList := by
   simp [crc32c, extend, crcList]
 
+theorem spec_crc32c_eq_crcList (bs : ByteArray) : Spec.crc32c bs = crcList bs.data.toList := by
+  rw [← crc32c_eq_spec, crc32c_eq_crcList]
+
 /-- The standard check value: CRC32C("123456789") = 0xE3069283. -/
 theorem check_123456789 :
     crcList [0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39] = 0xE3069283 := by decide +kernel
@@ -30,6 +33,18 @@ theorem rfc3720_ones : crcList (List.replicate 32 0xff) = 0x62a8ab43 := by decid
 theorem rfc3720_incr : crcList ((List.range 32).map UInt8.ofNat) = 0x46dd794e := by decide +kernel
 theorem rfc3720_decr : crcList ((List.range 32).map fun i => UInt8.ofNat (31 - i)) = 0x113fdb5c := by
   decide +kernel
+
+/-- RFC 3720 appendix B.4: 48-byte iSCSI SCSI Read (10) Command PDU
+(wire digest bytes `56 3a 96 d9`, little-endian 32-bit CRC `0xd9963a56`). -/
+theorem rfc3720_iscsi_read :
+    crcList [
+      0x01, 0xc0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+      0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+      0x14, 0x00, 0x00, 0x00, 0x00, 0x00, 0x04, 0x00,
+      0x00, 0x00, 0x00, 0x14, 0x00, 0x00, 0x00, 0x18,
+      0x28, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+      0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+    ] = 0xd9963a56 := by decide +kernel
 
 /-! abseil `ExtendByZeroesAllLengthBits` -/
 
