@@ -3,3 +3,5 @@ import SimdModels.PolyShift
 import SimdModels.Models
 import SimdModels.Trusted
 import SimdModels.Semantics
+import SimdModels.V128
+import SimdModels.IntelSdm

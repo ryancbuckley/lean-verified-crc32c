@@ -35,6 +35,10 @@ theorem usize_add_toNat (i : USize) (k : Nat) (h : i.toNat + k < USize.size) :
 theorem usize_toUInt64_toNat (x : USize) : x.toUInt64.toNat = x.toNat := by
   simp
 
+/-- A little-endian 16-bit halfword from its bytes. -/
+@[inline] def word16 (b0 b1 : UInt8) : UInt16 :=
+  b0.toUInt16 ||| (b1.toUInt16 <<< 8)
+
 /-- A little-endian 32-bit word from its bytes. -/
 @[inline] def word32 (b0 b1 b2 b3 : UInt8) : UInt32 :=
   b0.toUInt32 ||| (b1.toUInt32 <<< 8) ||| (b2.toUInt32 <<< 16) ||| (b3.toUInt32 <<< 24)
@@ -43,6 +47,12 @@ theorem usize_toUInt64_toNat (x : USize) : x.toUInt64.toNat = x.toNat := by
 @[inline] def word64 (b0 b1 b2 b3 b4 b5 b6 b7 : UInt8) : UInt64 :=
   b0.toUInt64 ||| (b1.toUInt64 <<< 8) ||| (b2.toUInt64 <<< 16) ||| (b3.toUInt64 <<< 24) |||
     (b4.toUInt64 <<< 32) ||| (b5.toUInt64 <<< 40) ||| (b6.toUInt64 <<< 48) ||| (b7.toUInt64 <<< 56)
+
+/-- Unaligned little-endian 16-bit load at byte offset `i`. -/
+@[inline] def load16 (a : @& ByteArray) (i : USize) (hs : a.size < USize.size)
+    (h : i.toNat + 2 ≤ a.size) : UInt16 :=
+  have h1 : (i + 1).toNat = i.toNat + 1 := usize_add_toNat i 1 (by omega)
+  word16 (a.uget i (by omega)) (a.uget (i + 1) (by omega))
 
 /-- Unaligned little-endian 32-bit load at byte offset `i`. -/
 @[inline] def load32 (a : @& ByteArray) (i : USize) (hs : a.size < USize.size)
@@ -66,6 +76,17 @@ theorem usize_toUInt64_toNat (x : USize) : x.toUInt64.toNat = x.toNat := by
   word64 (a.uget i (by omega)) (a.uget (i + 1) (by omega)) (a.uget (i + 2) (by omega))
     (a.uget (i + 3) (by omega)) (a.uget (i + 4) (by omega)) (a.uget (i + 5) (by omega))
     (a.uget (i + 6) (by omega)) (a.uget (i + 7) (by omega))
+
+/-- Absorb the two bytes of a little-endian halfword, bit at a time. -/
+def stepU16 (s : UInt32) (v : UInt16) : UInt32 :=
+  stepByte (stepByte s v.toUInt8) (v >>> 8).toUInt8
+
+/-- Absorb the four bytes of a little-endian 32-bit word, bit at a time. -/
+def stepU32 (s : UInt32) (v : UInt32) : UInt32 :=
+  let s := stepByte s v.toUInt8
+  let s := stepByte s (v >>> 8).toUInt8
+  let s := stepByte s (v >>> 16).toUInt8
+  stepByte s (v >>> 24).toUInt8
 
 /-- Absorb the eight bytes of a little-endian word, bit at a time. -/
 def stepWord (s : UInt32) (w : UInt64) : UInt32 :=

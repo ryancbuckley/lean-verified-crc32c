@@ -63,6 +63,23 @@ theorem R_zero : R 0 = 0 := by
   show π (polyR (0 : UInt64).toBitVec) = 0
   rw [show polyR (0 : UInt64).toBitVec = 0 from polyR_zero, map_zero]
 
+theorem polyR_word16 (b0 b1 : UInt8) :
+    polyR (word16 b0 b1).toBitVec = msgPoly [b0, b1] := by
+  rw [word16_eq_xor]
+  simp only [UInt16.toBitVec_xor, polyR_xor]
+  simp [msgPoly, polyR_setWidth (show 8 ≤ 16 by omega),
+    polyR_setWidth_shiftLeft (show 8 + 8 ≤ 16 by omega)]
+
+theorem polyR_word32 (b0 b1 b2 b3 : UInt8) :
+    polyR (word32 b0 b1 b2 b3).toBitVec = msgPoly [b0, b1, b2, b3] := by
+  rw [word32_eq_xor]
+  simp only [UInt32.toBitVec_xor, polyR_xor]
+  simp [msgPoly, polyR_setWidth (show 8 ≤ 32 by omega),
+    polyR_setWidth_shiftLeft (show 8 + 8 ≤ 32 by omega),
+    polyR_setWidth_shiftLeft (show 8 + 16 ≤ 32 by omega),
+    polyR_setWidth_shiftLeft (show 8 + 24 ≤ 32 by omega)]
+  ring
+
 theorem polyR_word64 (b0 b1 b2 b3 b4 b5 b6 b7 : UInt8) :
     polyR (word64 b0 b1 b2 b3 b4 b5 b6 b7).toBitVec = msgPoly [b0, b1, b2, b3, b4, b5, b6, b7] := by
   rw [word64_eq_xor]
@@ -110,6 +127,59 @@ theorem msgPoly_bytes_load (a : ByteArray) (i : USize) (hs : a.size < USize.size
   simp only [msgPoly, List.length_cons, hlen]
   simp
   ring
+
+theorem msgPoly_bytes_load16 (a : ByteArray) (i : USize) (hs : a.size < USize.size) (m : Nat)
+    (h : i.toNat + 2 + m ≤ a.size) :
+    msgPoly (bytes a i.toNat (i.toNat + 2 + m)) =
+      polyR (load16 a i hs (by omega)).toBitVec * X ^ (8 * m) +
+        msgPoly (bytes a (i.toNat + 2) (i.toNat + 2 + m)) := by
+  have h1 : (i + 1).toNat = i.toNat + 1 := usize_add_toNat i 1 (by omega)
+  have hl : load16 a i hs (by omega) = word16 (a[i.toNat]'(by omega)) (a[i.toNat + 1]'(by omega)) := by
+    show word16 (a.uget i _) (a.uget (i + 1) _) = _
+    rw [uget_eq a i _ rfl, uget_eq a (i + 1) _ h1]
+  rw [hl, polyR_word16, bytes_cons a i.toNat _ (by omega) h,
+    bytes_cons a (i.toNat + 1) _ (by omega) h]
+  have hlen := length_bytes a (i.toNat + 2) (i.toNat + 2 + m) h
+  simp only [msgPoly, List.length_cons, hlen]
+  simp
+  ring
+
+theorem msgPoly_bytes_load32 (a : ByteArray) (i : USize) (hs : a.size < USize.size) (m : Nat)
+    (h : i.toNat + 4 + m ≤ a.size) :
+    msgPoly (bytes a i.toNat (i.toNat + 4 + m)) =
+      polyR (load32 a i hs (by omega)).toBitVec * X ^ (8 * m) +
+        msgPoly (bytes a (i.toNat + 4) (i.toNat + 4 + m)) := by
+  have h1 : (i + 1).toNat = i.toNat + 1 := usize_add_toNat i 1 (by omega)
+  have h2 : (i + 2).toNat = i.toNat + 2 := usize_add_toNat i 2 (by omega)
+  have h3 : (i + 3).toNat = i.toNat + 3 := usize_add_toNat i 3 (by omega)
+  have hl : load32 a i hs (by omega) =
+      word32 (a[i.toNat]'(by omega)) (a[i.toNat + 1]'(by omega))
+        (a[i.toNat + 2]'(by omega)) (a[i.toNat + 3]'(by omega)) := by
+    show word32 (a.uget i _) (a.uget (i + 1) _) (a.uget (i + 2) _) (a.uget (i + 3) _) = _
+    rw [uget_eq a i _ rfl, uget_eq a (i + 1) _ h1, uget_eq a (i + 2) _ h2, uget_eq a (i + 3) _ h3]
+  rw [hl, polyR_word32, bytes_cons a i.toNat _ (by omega) h,
+    bytes_cons a (i.toNat + 1) _ (by omega) h, bytes_cons a (i.toNat + 2) _ (by omega) h,
+    bytes_cons a (i.toNat + 3) _ (by omega) h]
+  have hlen := length_bytes a (i.toNat + 4) (i.toNat + 4 + m) h
+  simp only [msgPoly, List.length_cons, hlen]
+  simp
+  ring
+
+theorem stepU16_eq_rawExtend (s : UInt32) (v : UInt16) :
+    stepU16 s v = rawExtend s [v.toUInt8, (v >>> 8).toUInt8] := rfl
+
+theorem stepU32_eq_rawExtend (s : UInt32) (v : UInt32) :
+    stepU32 s v = rawExtend s [v.toUInt8, (v >>> 8).toUInt8, (v >>> 16).toUInt8, (v >>> 24).toUInt8] := rfl
+
+theorem π_P_stepU16 (s : UInt32) (v : UInt16) :
+    π (P (stepU16 s v)) = π (P s) * π X ^ 16 + π (polyR v.toBitVec) * π X ^ 32 := by
+  rw [stepU16_eq_rawExtend, π_P_rawExtend, ← polyR_word16, word16_bytes]
+  simp
+
+theorem π_P_stepU32 (s : UInt32) (v : UInt32) :
+    π (P (stepU32 s v)) = π (P s) * π X ^ 32 + π (polyR v.toBitVec) * π X ^ 32 := by
+  rw [stepU32_eq_rawExtend, π_P_rawExtend, ← polyR_word32, word32_bytes]
+  simp
 
 theorem π_P_stepWord (s : UInt32) (w : UInt64) :
     π (P (stepWord s w)) = π (P s) * π X ^ 64 + R w * π X ^ 32 := by

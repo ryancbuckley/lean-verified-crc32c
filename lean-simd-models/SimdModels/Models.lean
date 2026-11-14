@@ -1,11 +1,57 @@
 /-
 Instruction models: pure Lean definitions, written in the shape of the vendor
-pseudocode, for the instructions bound in `SimdModels.Trusted`. Imports only
-Lean core, so native binaries never link Mathlib. No `extern` here: these are
-ordinary definitions, and the proofs in `SimdModels.Semantics` are about them.
+pseudocode, for the instructions bound in `SimdModels.Trusted` plus pure 128-bit
+SIMD register and lane views (`V128`). Imports only Lean core, so native
+binaries never link Mathlib. No `extern` here: these are ordinary definitions,
+and the proofs in `SimdModels.Semantics`, `SimdModels.V128`, and
+`SimdModels.IntelSdm` are about them.
 -/
 
-namespace SimdModels.Model
+namespace SimdModels
+
+/-- A 128-bit SIMD vector register (`uint8x16_t` / `poly128_t` / `__m128i`),
+with lane 0 in the least-significant bits (little-endian register convention on
+both AArch64 and x86-64). -/
+abbrev V128 := BitVec 128
+
+namespace V128
+
+/-- Construct a `V128` from its low (`[63:0]`) and high (`[127:64]`) quadwords. -/
+def ofHalves (lo hi : UInt64) : V128 := hi.toBitVec ++ lo.toBitVec
+
+/-- Low 64-bit lane (`[63:0]`). -/
+def lo64 (v : V128) : UInt64 := ⟨v.setWidth 64⟩
+
+/-- High 64-bit lane (`[127:64]`). -/
+def hi64 (v : V128) : UInt64 := ⟨(v >>> 64).setWidth 64⟩
+
+/-- Extract 8-bit lane `i` (`0 ≤ i < 16`). -/
+def lane8 (v : V128) (i : Fin 16) : UInt8 := ⟨(v >>> (8 * i.val)).setWidth 8⟩
+
+/-- Extract 16-bit lane `i` (`0 ≤ i < 8`). -/
+def lane16 (v : V128) (i : Fin 8) : UInt16 := ⟨(v >>> (16 * i.val)).setWidth 16⟩
+
+/-- Extract 32-bit lane `i` (`0 ≤ i < 4`). -/
+def lane32 (v : V128) (i : Fin 4) : UInt32 := ⟨(v >>> (32 * i.val)).setWidth 32⟩
+
+/-- Extract 64-bit lane `i` (`0 ≤ i < 2`). -/
+def lane64 (v : V128) (i : Fin 2) : UInt64 := ⟨(v >>> (64 * i.val)).setWidth 64⟩
+
+/-- All sixteen 8-bit lanes, from lane 0 to lane 15. -/
+def lanes8 (v : V128) : List UInt8 := List.ofFn (lane8 v)
+
+/-- All eight 16-bit lanes, from lane 0 to lane 7. -/
+def lanes16 (v : V128) : List UInt16 := List.ofFn (lane16 v)
+
+/-- All four 32-bit lanes, from lane 0 to lane 3. -/
+def lanes32 (v : V128) : List UInt32 := List.ofFn (lane32 v)
+
+/-- Both 64-bit lanes `[lo64 v, hi64 v]`. -/
+def lanes64 (v : V128) : List UInt64 := List.ofFn (lane64 v)
+
+end V128
+
+namespace Model
 
 /-! ### CRC32C (Arm `CRC32C<B,H,W,X>`, x86 SSE4.2 `CRC32`)
 
@@ -26,7 +72,8 @@ Arm ASL, `aarch64/instrs/integer/crc`:
         return data<31:0>;
 
 Intel SDM, `CRC32`, has the same shape: bit-reflect both operands, shift,
-XOR, reduce modulo `11EDC6F41H`, bit-reflect the result.
+XOR, reduce modulo `11EDC6F41H`, bit-reflect the result (formally proven equal
+in `SimdModels.IntelSdm`).
 -/
 
 /-- The loop of ASL `Poly32Mod2`, for `i = 32 + k - 1` down to `32`. -/
@@ -54,7 +101,7 @@ def crc32c_u16 (c : UInt32) (v : UInt16) : UInt32 := ⟨crc32c 16 c.toBitVec v.t
 def crc32c_u32 (c : UInt32) (v : UInt32) : UInt32 := ⟨crc32c 32 c.toBitVec v.toBitVec⟩
 def crc32c_u64 (c : UInt32) (v : UInt64) : UInt32 := ⟨crc32c 64 c.toBitVec v.toBitVec⟩
 
-/-! ### Carry-less multiply (Arm `PMULL`, x86 `PCLMULQDQ`)
+/-! ### Carry-less multiply (Arm `PMULL` / `PMULL2`, x86 `PCLMULQDQ`)
 
 Arm ASL `PolynomialMult`:
 
@@ -83,4 +130,31 @@ def clmulLo (a b : UInt64) : UInt64 := ⟨(polynomialMult a.toBitVec b.toBitVec)
 /-- High 64 bits of the 64x64 carry-less product. -/
 def clmulHi (a b : UInt64) : UInt64 := ⟨((polynomialMult a.toBitVec b.toBitVec) >>> 64).setWidth 64⟩
 
-end SimdModels.Model
+/-! ### 128-bit vector operations (Arm Neon / x86 SSE2–PCLMULQDQ) -/
+
+/-- `EOR v.16b` / `veorq_u8` / `_mm_xor_si128`. -/
+def veorq (a b : V128) : V128 := a ^^^ b
+
+/-- `EXT v.16b, a.16b, b.16b, #imm` / `vextq_u8` / `_mm_alignr_epi8(b, a, imm)`. -/
+def vextq (a b : V128) (imm : Fin 16) : V128 :=
+  ((b ++ a) >>> (8 * imm.val)).setWidth 128
+
+/-- `PMULL v.1q, a.1d, b.1d` (`vmull_p64`): carry-less product of low 64-bit lanes. -/
+def vmull_p64 (a b : V128) : V128 :=
+  polynomialMult (V128.lo64 a).toBitVec (V128.lo64 b).toBitVec
+
+/-- `PMULL2 v.1q, a.2d, b.2d` (`vmull_high_p64`): carry-less product of high 64-bit lanes. -/
+def vmull_high_p64 (a b : V128) : V128 :=
+  polynomialMult (V128.hi64 a).toBitVec (V128.hi64 b).toBitVec
+
+/-- `PCLMULQDQ xmm1, xmm2, imm8` (`_mm_clmulepi64_si128`): bit 0 selects the
+quadword of `a` and bit 4 selects the quadword of `b`; all other bits of `imm8`
+are ignored by the architecture. -/
+def clmulepi64 (a b : V128) (imm8 : UInt8) : V128 :=
+  let src1 := if imm8.toBitVec.getLsbD 0 then (V128.hi64 a).toBitVec else (V128.lo64 a).toBitVec
+  let src2 := if imm8.toBitVec.getLsbD 4 then (V128.hi64 b).toBitVec else (V128.lo64 b).toBitVec
+  polynomialMult src1 src2
+
+end Model
+
+end SimdModels

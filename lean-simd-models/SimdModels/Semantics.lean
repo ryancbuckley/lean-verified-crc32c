@@ -38,6 +38,14 @@ theorem polyN_xor {w : Nat} (a b : BitVec w) : polyN (a ^^^ b) = polyN a + polyN
 theorem polyN_zero {w : Nat} : polyN (0 : BitVec w) = 0 := by
   ext k; simp [coeff_polyN']
 
+theorem polyN_injective {w : Nat} : Function.Injective (polyN (w := w)) := by
+  intro a b h
+  apply BitVec.eq_of_getLsbD_eq
+  intro i hi
+  have := congrArg (fun p => p.coeff i) h
+  simp only [coeff_polyN'] at this
+  cases ha : a.getLsbD i <;> cases hb : b.getLsbD i <;> simp [ha, hb] at this <;> rfl
+
 theorem polyN_cast {w v : Nat} (h : w = v) (x : BitVec w) : polyN (x.cast h) = polyN x := by
   subst h; rfl
 

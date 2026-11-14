@@ -2,13 +2,14 @@
 Axiom audit for the headline theorems. The build output of this file is the
 record quoted in each phase report.
 
-Every Phase 1 and Phase 2 theorem depends only on Lean's standard axioms
-(`propext`, `Classical.choice`, `Quot.sound`), with zero `bv_decide` or
-`native_decide` axioms.
+Every Phase 1, Phase 2, Phase 3, and Phase 4 theorem depends only on Lean's
+standard axioms (`propext`, `Classical.choice`, `Quot.sound`), with zero
+`bv_decide` or `native_decide` axioms.
 -/
 import MemcpyCrc32c.Vectors
 import MemcpyCrc32c.Portable
 import MemcpyCrc32c.HwKernel
+import SimdModels
 
 open Crc32c
 
@@ -37,12 +38,24 @@ open Crc32c
 #print axioms extendPortable_eq_extend
 #print axioms extendPortable_eq_spec
 
--- Phase 3: instruction-model semantics and their link to the reference.
+-- Phase 3: instruction-model semantics, V128 views, Intel SDM equivalence, and link to reference.
 #print axioms SimdModels.crc32c_spec
 #print axioms SimdModels.clmul_spec
 #print axioms SimdModels.clmul_spec_reflected
+#print axioms SimdModels.V128.ofHalves_lo_hi
+#print axioms SimdModels.V128.lane8_vextq
+#print axioms SimdModels.clmulepi64_spec
+#print axioms SimdModels.clmulepi64_spec_reflected
+#print axioms SimdModels.IntelSdm.crc32_u8_eq
+#print axioms SimdModels.IntelSdm.crc32_u16_eq
+#print axioms SimdModels.IntelSdm.crc32_u32_eq
+#print axioms SimdModels.IntelSdm.crc32_u64_eq
+#print axioms SimdModels.IntelSdm.crc32_r64_eq
+#print axioms SimdModels.IntelSdm.clmulepi64_eq
 #print axioms G_eq_castagnoli
 #print axioms crc32c_u64_eq
+#print axioms crc32c_u32_eq
+#print axioms crc32c_u16_eq
 #print axioms crc32c_u8_eq
 
 -- Phase 4 (AArch64 track): hardware-CRC kernel. Rests on the trusted bindings in

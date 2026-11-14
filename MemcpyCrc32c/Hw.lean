@@ -1,7 +1,7 @@
 /-
 Links the hardware CRC32C instruction models (`lean-simd-models`) to this
-project's reference: the instruction on a 64-bit operand is `stepWord`, and on
-an 8-bit operand is `stepByte`. Kernel-only proofs.
+project's reference across all four operand widths: 8-bit (`stepByte`), 16-bit
+(`stepU16`), 32-bit (`stepU32`), and 64-bit (`stepWord`). Kernel-only proofs.
 -/
 import MemcpyCrc32c.Portable
 import SimdModels.Semantics
@@ -25,6 +25,24 @@ theorem model_crc32c_u64_eq (c : UInt32) (w : UInt64) :
   rw [π_P_stepWord]
   simp
 
+theorem model_crc32c_u32_eq (c : UInt32) (v : UInt32) :
+    SimdModels.Model.crc32c_u32 c v = stepU32 c v := by
+  apply P_injective
+  show polyR (SimdModels.Model.crc32c 32 c.toBitVec v.toBitVec) = _
+  rw [SimdModels.crc32c_spec, ← G_eq_castagnoli]
+  apply modByMonic_eq_of_π_eq (degree_P_lt _)
+  rw [π_P_stepU32]
+  simp
+
+theorem model_crc32c_u16_eq (c : UInt32) (v : UInt16) :
+    SimdModels.Model.crc32c_u16 c v = stepU16 c v := by
+  apply P_injective
+  show polyR (SimdModels.Model.crc32c 16 c.toBitVec v.toBitVec) = _
+  rw [SimdModels.crc32c_spec, ← G_eq_castagnoli]
+  apply modByMonic_eq_of_π_eq (degree_P_lt _)
+  rw [π_P_stepU16]
+  simp
+
 theorem model_crc32c_u8_eq (c : UInt32) (b : UInt8) :
     SimdModels.Model.crc32c_u8 c b = stepByte c b := by
   apply P_injective
@@ -34,9 +52,17 @@ theorem model_crc32c_u8_eq (c : UInt32) (b : UInt8) :
   rw [π_P_stepByte]
   simp
 
-/-- The trusted 64-bit CRC32C instruction binding absorbs one little-endian word. -/
+/-- The trusted 64-bit CRC32C instruction binding absorbs one little-endian 64-bit word. -/
 theorem crc32c_u64_eq (c : UInt32) (w : UInt64) : SimdModels.crc32c_u64 c w = stepWord c w :=
   model_crc32c_u64_eq c w
+
+/-- The trusted 32-bit CRC32C instruction binding absorbs one little-endian 32-bit word. -/
+theorem crc32c_u32_eq (c : UInt32) (v : UInt32) : SimdModels.crc32c_u32 c v = stepU32 c v :=
+  model_crc32c_u32_eq c v
+
+/-- The trusted 16-bit CRC32C instruction binding absorbs one little-endian 16-bit halfword. -/
+theorem crc32c_u16_eq (c : UInt32) (v : UInt16) : SimdModels.crc32c_u16 c v = stepU16 c v :=
+  model_crc32c_u16_eq c v
 
 /-- The trusted 8-bit CRC32C instruction binding absorbs one byte. -/
 theorem crc32c_u8_eq (c : UInt32) (b : UInt8) : SimdModels.crc32c_u8 c b = stepByte c b :=
