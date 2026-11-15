@@ -39,6 +39,18 @@ $$(A(X) \oplus B(X)) \bmod G(X) \;=\; (A(X) \bmod G(X)) \;\oplus\; (B(X) \bmod G
 
 Every single optimization in fast CRC code comes from this one equation: you can break a message into pieces, shift or fold pieces independently, XOR the partial results back together, and get the **exact same 32-bit remainder** as if you had divided the whole buffer one bit at a time.
 
+### What errors polynomial division provably catches
+
+Linearity also explains why CRC32C catches corruption. Flipping bits in a message (and/or its 32-bit CRC) XORs an **error polynomial** $E(X)$—having one $X^i$ term per flipped bit—into the codeword. Two buffers have the same CRC if and only if $G(X)$ divides $E(X)$ (`MemcpyCrc32c/ErrorDetection.lean`). From the algebraic structure of CRC32C's generator $G(X) = (X + 1) \cdot P_{31}(X)$ (`MemcpyCrc32c/PolyAlgebra.lean`), Lean's kernel proves:
+
+- **Every odd number of bit flips (`1, 3, 5, …`) at any length is caught.** Because $X + 1$ divides $G(X)$, every nonzero multiple of $G(X)$ has an *even* number of `1` bits—so an odd number of flipped bits can never be a multiple of $G(X)$.
+- **Every burst error up to 32 consecutive bits (or 4 consecutive bytes) at any length is caught.** Factoring out the lowest flipped bit gives $E(X) = X^k \cdot B(X)$ with $\deg B < 32$; since $G(X)$ has constant term `1` and degree `32`, it is coprime to $X^k$ and too large to divide $B(X)$.
+- **Exact multi-bit (*Hamming distance*) guarantees follow from the sparsest multiples of $G(X)$.** A $w$-bit error can go undetected only if a weight-$w$ multiple of $G(X)$ fits within the `8 * len + 32` bits of payload plus CRC. By proving both the **minimality** and **uniqueness** of the lowest-degree multiples of $G(X)$ at weights `2, 4, 6, 8` (`MemcpyCrc32c/ZeroPolyMinimal.lean`), we obtain machine-checked Castagnoli/Koopman distance regimes for `Spec.extend`, `computeCrc32c`, and `memcpyCrc32c`:
+  - **Up to 3 bit flips (`HD = 4`):** caught up to **268,435,451 bytes (~256 MiB)**, because $P_{31}(X)$ is primitive of Mersenne prime order $2^{31} - 1$ (proven via the Lucas–Lehmer test), making $X^{2^{31}-1} + 1$ the unique minimal 2-term multiple.
+  - **Up to 5 bit flips (`HD = 6`):** caught up to **655 bytes** (`5,243` payload bits, covering **512-byte storage sectors**), from the unique minimal 4-term multiple at degree `5,275`.
+  - **Up to 7 bit flips (`HD = 8`):** caught up to **22 bytes**, from the unique minimal 6-term multiple at degree `209`.
+  - **Up to 9 bit flips (`HD = 10`):** caught up to **5 bytes** (or **9 payload bytes** if the 32-bit CRC itself is uncorrupted), from the unique minimal 8-term multiple at degree `79`.
+
 ---
 
 ## 3. How Fast CRC Algorithms Avoid Bit-by-Bit Division
@@ -55,7 +67,7 @@ Suppose you find a polynomial $Z(X)$ that is an **exact multiple** of $G(X)$—s
 
 Because $Z(X)$ has remainder `0`, XORing any multiple $W(X) \cdot X^k \cdot Z(X)$ into your message **leaves the final CRC completely unchanged**. You can use the top term of $Z(X)$ to cancel an entire 64-bit message word at once, paying only 5 shifted XORs into a sliding window of four 64-bit integer registers ahead of you—no special CPU instructions and no lookup-table memory reads required!
 
-*(A neat quirk of CRC32C: its generator $G(X)$ has 18 nonzero terms, an even number, which means $X + 1$ divides $G(X)$ and **every** multiple of $G(X)$ must also have an even number of terms. That is why the smallest sparse multiple for CRC32C has 6 terms, whereas standard gzip CRC32 has 3-term and 5-term multiples.)*
+*(A neat quirk of CRC32C: because $X + 1$ divides $G(X)$, odd-weight multiples (`3` or `5` terms) cannot exist, and the minimal `2`-term and `4`-term multiples have degrees $2^{31} - 1$ and `5,275`—far too wide for a register window. That makes the unique minimal `6`-term multiple at degree `209` the sweet spot for register-only folding, whereas standard gzip CRC32 has compact `3`-term and `5`-term multiples.)*
 
 Running 4 independent streams of this reduction side-by-side in general-purpose registers lets the CPU overlap the shift-and-XOR steps, then recombines the 4 stream checksums at the end.
 

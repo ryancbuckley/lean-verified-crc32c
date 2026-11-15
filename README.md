@@ -14,14 +14,20 @@ Every CRC path—from a pure-register portable fallback to a 6-stream hardware `
 
 ## What Has Been Accomplished
 
-### 1. Polynomial Specification & CRC Algebra (`MemcpyCrc32c/Spec.lean`, `Arith.lean`)
+### 1. Polynomial Specification, Generator Algebra & Error Detection (`MemcpyCrc32c/Spec.lean`, `Arith.lean`, `PolyAlgebra.lean`, `ErrorDetection.lean`)
 - **Reference specification.** CRC32C is specified directly as polynomial remainder modulo the Castagnoli generator $G(X)$ in Mathlib's `(ZMod 2)[X]`, matching Abseil's conditioning conventions (`0xFFFFFFFF` XOR on entry and exit of `ExtendCrc32c`).
 - **Verified CRC combinators.** `extend_append`, `concat_spec`, `removePrefix_spec`, `removeSuffix_spec`, and `extendZeroes_spec` are proven for unboxed $O(\log n)$ square-and-multiply arithmetic in $\mathbb{F}_2[X]/(G)$, alongside kernel-evaluated test vectors (`"123456789" -> 0xE3069283` and all five RFC 3720 B.4 iSCSI vectors).
+- **Castagnoli generator structure (`PolyAlgebra.lean`).** $G(X)$ factors into irreducible factors $(X + 1) \cdot P_{31}(X)$ (`G_eq_mul_P31`, `irreducible_X_add_one`, `irreducible_P31`, `squarefree_G`). Using Mathlib's Lucas–Lehmer test for $M_{31} = 2^{31} - 1$, $P_{31}(X)$ is proven primitive and $\pi(X) \in \mathbb{F}_2[X]/(G)$ has exact multiplicative order $2^{31} - 1$ (`orderOf_π_X`), alongside characteristic-2 Frobenius invariance (`dvd_expand_two_pow_iff`: $G(X) \mid p(X^{2^k}) \iff G(X) \mid p(X)$).
+- **End-to-end error detection & Hamming-distance bounds (`ErrorDetection.lean`).** Two same-length messages + CRCs collide iff $G(X)$ divides their codeword error polynomial (`dvd_codewordError_iff`). Combining this with the generator and minimal zero-polynomial theorems yields kernel-checked Castagnoli/Koopman guarantees for `Spec.extend`, `computeCrc32c`, and `memcpyCrc32c`:
+  - **All odd-weight bit errors** (`Spec.extend_detects_odd_errors`) and **all $\le 32$-bit / 4-byte burst errors** (`Spec.extend_detects_burst32`, `Spec.extend_ne_of_burst4Bytes`) at arbitrary message lengths.
+  - **Exact Hamming-distance regimes:** **HD = 4** up to `268,435,451` B (`~256 MiB`, `Spec.extend_hd4`), **HD = 6** up to `655` B / `5,243` payload bits covering **512 B storage sectors** (`Spec.extend_hd6`, `memcpyCrc32c_sector_hd6`), **HD = 8** up to `22` B (`Spec.extend_hd8`), and **HD = 10** up to `5` B codeword / `9` B uncorrupted-CRC payload (`Spec.extend_hd10`, `Spec.extend_payload_hd10`).
 
-### 2. Verified Portable Register Kernel (`MemcpyCrc32c/Portable.lean`)
-- **Zero-polynomial (Chorba) reduction for CRC32C.** Because $G(X)$ has 18 terms, $X + 1 \mid G(X)$ and every multiple of $G$ has even weight (`eval_one_G`), so 3-term and 5-term zero polynomials do not exist for CRC32C. The lowest-degree 6-term multiple, proven minimal by an exhaustive search checked in the Lean kernel (`zero6_209_minimal`: every nonzero multiple of $G$ with at most six terms has degree $\ge 209$), is:
-  $$Z_{209}(X) = X^{209} + X^{144} + X^{54} + X^{39} + X^{14} + 1$$
-  which cancels each 64-bit word and re-injects five shifted XORs across a 4-word register window.
+### 2. Certified Zero Polynomials & Verified Portable Register Kernel (`MemcpyCrc32c/ZeroPoly.lean`, `ZeroPolyMinimal.lean`, `Portable.lean`)
+- **Zero-polynomial (Chorba) reduction for CRC32C.** Because $G(X)$ has 18 terms, $X + 1 \mid G(X)$ and every nonzero multiple of $G$ has positive even weight (`even_card_support_of_dvd_G`), ruling out odd weights (`3, 5, 7, 9`). Across every sparse-multiple regime, both **degree minimality** and **uniqueness** are proven in the Lean kernel:
+  - **Weight $< 8$ (`≤ 6` terms, `zero6_209_minimal` / `zero6_209_unique`):** every nonzero multiple of $G$ with fewer than 8 terms has degree $\ge 209$, and the unique degree-209 multiple is
+    $$Z_{209}(X) = X^{209} + X^{144} + X^{54} + X^{39} + X^{14} + 1$$
+    which cancels each 64-bit word and re-injects five shifted XORs across a 4-word register window. By Frobenius invariance, $Z_{209}(X^{64})$ (`13,376` bits) is likewise the unique minimal 64-bit word-aligned multiple with $< 8$ terms (`zero6_word64_minimal`, `zero6_word64_unique`).
+  - **Other Chorba & Koopman regimes:** unique minimal `< 4`-term (`2`-term) multiple $X^{2^{31}-1} + 1$ (`zero2_minimal` / `zero2_unique`); unique minimal `< 6`-term (`4`-term) multiple $X^{5275} + X^{4508} + X^{2751} + 1$ (`zero4_5275_minimal` / `zero4_5275_unique`); unique minimal `< 8`-term multiple with leading gap $\ge 128$ (128-bit folding) $X^{290} + X^{136} + X^{113} + X^{107} + X^{32} + 1$ (`zero6_290_minimal` / `zero6_290_unique`); and unique minimal `< 10`-term (`8`-term) multiple $X^{79} + X^{75} + X^{71} + X^{58} + X^{18} + X^{12} + X + 1$ (`zero8_79_minimal` / `zero8_79_unique`).
 - **Three-tier register pipeline (zero scratch RAM, zero heap allocation):**
   - `< 40 B`: packed 8 KiB `ByteArray` slicing-by-8 (`sliceLoop`).
   - `40 B .. 2 KiB`: single-stream `fold209` reduction.
@@ -80,7 +86,7 @@ For the Apple M4 build, all **7 functions (`1,137` 32-bit instruction words)** r
 
 `scripts/check_trusted.sh` scans every `.lean` file (after stripping comments and string literals) and rejects any `sorry`, `admit`, `axiom`, `unsafe`, `implemented_by`, `csimp`, `native_decide`, or `@[extern]` outside `SimdModels/Trusted.lean`. `bv_decide` is permitted only inside a directory named `BvDecide/` (the agreed quarantine policy); no such directory exists, so none is used.
 
-- **Source-level theorems (`MemcpyCrc32c/Axioms.lean`, 60 theorems):**
+- **Source-level theorems (`MemcpyCrc32c/Axioms.lean`, 101 theorems, enforced via `#guard_msgs`):**
   1. Lean 4.35.0's kernel and Mathlib's polynomial definitions (`[propext, Classical.choice, Quot.sound]`).
   2. For native execution: Lean's C codegen, Clang, and the 9 `@[extern]` bindings in `SimdModels/Trusted.lean` (`crc32c_u8/16/32/64`, `clmulLo/Hi`, `loadU8`, `loadU64LE`, `cpuHasCrcClmul`), plus the ~295-line C++ wrapper `cxx/leancrc32c.cc`.
 - **AArch64 machine-code theorems (`MemcpyCrc32c/Arm64.lean`, hardware CRC call graph on this binary):**
@@ -166,14 +172,16 @@ Everything above has been tuned and hardware-tested on **Apple M4 (macOS / AArch
 ```text
 MemcpyCrc32c/
   Poly.lean, Spec.lean        # GF(2)[X] Castagnoli polynomial & frozen CRC32C spec
+  PolyAlgebra.lean            # (X+1)*P31 factorization, Lucas-Lehmer order 2^31-1 & Frobenius invariance
   Bitwise.lean, Vectors.lean  # Bit-at-a-time reference & RFC 3720 / standard test vectors
   Arith.lean                  # Proofs for append, concat, removePrefix/Suffix, extendZeroes
   ZeroPoly.lean, Word64.lean  # Certified CRC32C zero polynomials & 64-bit word lemmas
-  ZeroPolyMinimal.lean        # Kernel-checked proof that the 6-term zero polynomial has least degree
+  ZeroPolyMinimal.lean, ZeroMin/ # Minimality & uniqueness for weights <4, <6, <8 (deg 209, 290, word64), <10
+  ErrorDetection.lean         # Odd-error, 32-bit burst & Castagnoli/Koopman HD=4,6,8,10 theorems
   Portable.lean               # Equivalence proof for 3-tier Chorba portable kernel
   Hw.lean, HwKernel.lean      # Equivalence proof for 3-regime CRC32C + CLMUL kernel
   Memcpy.lean, Dispatch.lean  # Copy-and-CRC & opaque runtime CPU-dispatch proofs
-  CApi.lean, Axioms.lean      # C-ABI entry-point theorems & #print axioms audit (60 theorems)
+  CApi.lean, Axioms.lean      # C-ABI entry-point theorems & #guard_msgs axiom audit (101 theorems)
   Impl/                       # Mathlib-free executable Lean implementations
   Arm64.lean, Arm64/          # AArch64 binary machine-code proofs (7 functions, 1,137 insns)
 lean-simd-models/
