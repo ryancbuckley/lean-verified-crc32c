@@ -7,12 +7,12 @@ testing on hardware.
 
 | Binding | AArch64 hardware | x86-64 | Authoritative cross-check |
 | --- | --- | --- | --- |
-| `crc32c_u8` | pass | pass under Rosetta only | Arm: pass (ASLp). Intel: pass (formal SDM proof) |
-| `crc32c_u16` | pass | pass under Rosetta only | Arm: pass (ASLp). Intel: pass (formal SDM proof) |
-| `crc32c_u32` | pass | pass under Rosetta only | Arm: pass (ASLp). Intel: pass (formal SDM proof) |
-| `crc32c_u64` | pass | pass under Rosetta only | Arm: pass (ASLp). Intel: pass (formal SDM proof) |
-| `clmulLo` | pass | pass under Rosetta only | Arm: pass (ASLp). Intel: pass (formal SDM proof) |
-| `clmulHi` | pass | pass under Rosetta only | Arm: pass (ASLp). Intel: pass (formal SDM proof) |
+| `crc32c_u8` | pass | pass under Rosetta only | Arm: pass (ASLp). Intel: partial (proven equal to a hand transcription of the SDM) |
+| `crc32c_u16` | pass | pass under Rosetta only | Arm: pass (ASLp). Intel: partial (proven equal to a hand transcription of the SDM) |
+| `crc32c_u32` | pass | pass under Rosetta only | Arm: pass (ASLp). Intel: partial (proven equal to a hand transcription of the SDM) |
+| `crc32c_u64` | pass | pass under Rosetta only | Arm: pass (ASLp). Intel: partial (proven equal to a hand transcription of the SDM) |
+| `clmulLo` | pass | pass under Rosetta only | Arm: pass (ASLp). Intel: partial (proven equal to a hand transcription of the SDM) |
+| `clmulHi` | pass | pass under Rosetta only | Arm: pass (ASLp). Intel: partial (proven equal to a hand transcription of the SDM) |
 | `loadU64LE` | pass | pass under Rosetta only | Little-endian `memcpy` + `V128.lane8_vld1q` kernel proof |
 
 ## AArch64 hardware differential test
@@ -70,7 +70,7 @@ are compared with the Lean models.
 Trusted here: ASLp's interpreter, and that its bundled specification is
 Arm's.
 
-### Intel: done (universal kernel proof against Intel SDM pseudocode)
+### Intel: partial (proven equal to a hand transcription of the SDM pseudocode)
 
 `SimdModels/IntelSdm.lean` transcribes the imperative `Operation` pseudocode
 from Intel 64 and IA-32 Architectures Software Developer's Manual:
@@ -86,3 +86,10 @@ Lean's kernel proves universal equivalence (`crc32_u8_eq`, `crc32_u16_eq`,
 `crc32_u32_eq`, `crc32_u64_eq`, `crc32_r64_eq`, `clmulepi64_eq`) between the
 Intel SDM transcriptions and `SimdModels.Model` across **all** possible operand
 values and `imm8` bytes, using only `[propext, Classical.choice, Quot.sound]`.
+
+Limit of this check: the transcription in `IntelSdm.lean` was written by hand
+and has not been compared mechanically with Intel's text or with the
+machine-readable Intrinsics Guide data. The proof shows the two Lean
+definitions agree; it cannot show the transcription is faithful. Unlike the
+Arm check, nothing from the vendor was executed. Still to do: derive or check
+the transcription from Intel's published pseudocode, and run on real hardware.

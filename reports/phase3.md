@@ -1,6 +1,6 @@
 # Phase 3 report: SIMD model library (and Phase 4 AArch64 CRC kernel)
 
-Status: AArch64 exit criteria met; Intel SDM authoritative cross-check met via universal kernel proofs (`SimdModels/IntelSdm.lean`); x86-64 functional lowering verified under Rosetta 2, awaiting real x86-64 hardware. On the Phase 4 AArch64 track, `extendHw` is upgraded to a verified 3-regime hybrid `CRC32CX + PMULL` 64-byte dot-product kernel reaching 82%–104% of `absl::ExtendCrc32c` across 16 B–64 MiB on Apple M4.
+Status: AArch64 exit criteria met; the Intel cross-check is partial: the models are proven equal to a hand transcription of the SDM pseudocode (`SimdModels/IntelSdm.lean`), which has not been checked mechanically against Intel's text; x86-64 functional lowering verified under Rosetta 2, awaiting real x86-64 hardware. On the Phase 4 AArch64 track, `extendHw` is upgraded to a verified 3-regime hybrid `CRC32CX + PMULL` 64-byte dot-product kernel reaching 82%–104% of `absl::ExtendCrc32c` across 16 B–64 MiB on Apple M4.
 
 ## What exists
 
@@ -37,7 +37,7 @@ Details and raw output are in `lean-simd-models/validation/`.
 | Check | AArch64 | x86-64 |
 | --- | --- | --- |
 | Hardware differential test | Pass: 2,080,000 pairs per binding across all 7 bindings on an Apple M4, no mismatch | Not run on real hardware. Byte-identical to AArch64 across 232,960,000 output bytes (all 7 bindings + 7 `PCLMULQDQ` `imm8` selectors) under Rosetta 2 |
-| Authoritative cross-check | Pass: 100,720 vectors from Arm's machine-readable ASL, executed by ASLp on the real opcodes | Pass: universal Lean kernel proof against Intel SDM Vol. 2A/2B Operation pseudocode (`SimdModels/IntelSdm.lean`) |
+| Authoritative cross-check | Pass: 100,720 vectors from Arm's machine-readable ASL, executed by ASLp on the real opcodes | Partial: proven equal to a hand transcription of Intel SDM Vol. 2A/2B Operation pseudocode (`SimdModels/IntelSdm.lean`); the transcription itself is unchecked |
 
 ## Trusted
 
