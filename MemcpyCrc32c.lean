@@ -4,6 +4,7 @@ import MemcpyCrc32c.Bitwise
 import MemcpyCrc32c.Arith
 import MemcpyCrc32c.Vectors
 import MemcpyCrc32c.ZeroPoly
+import MemcpyCrc32c.PolyAlgebra
 import MemcpyCrc32c.ZeroPolyMinimal
 import MemcpyCrc32c.PolyShift
 import MemcpyCrc32c.Word64
@@ -13,4 +14,5 @@ import MemcpyCrc32c.HwKernel
 import MemcpyCrc32c.Memcpy
 import MemcpyCrc32c.Dispatch
 import MemcpyCrc32c.CApi
+import MemcpyCrc32c.ErrorDetection
 import MemcpyCrc32c.Axioms
