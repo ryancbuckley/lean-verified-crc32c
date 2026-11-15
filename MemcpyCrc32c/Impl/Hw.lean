@@ -39,6 +39,13 @@ open SimdModels (crc32c_u8 crc32c_u16 crc32c_u32 crc32c_u64 clmulLo clmulHi load
   let w1 := loadU64LE a (p + 8) hs hb1
   crc32c_u64 (crc32c_u64 s w0) w1
 
+/-- Absorb 32 little-endian bytes (`p .. p + 32`) with two `crc128` steps (`4 × crc32c_u64`). -/
+@[inline] def crc256 (a : @& ByteArray) (hs : a.size < USize.size) (p : USize)
+    (hp : p.toNat + 32 ≤ a.size) (s : UInt32) : UInt32 :=
+  have hp16 : (p + 16).toNat = p.toNat + 16 := usize_add_toNat p 16 (by omega)
+  let s := crc128 a hs p (by omega) s
+  crc128 a hs (p + 16) (by omega) s
+
 /-- Absorb 64 little-endian bytes (`p .. p + 64`) with four `crc128` steps (`8 × crc32c_u64`). -/
 @[inline] def crc512 (a : @& ByteArray) (hs : a.size < USize.size) (p : USize)
     (hp : p.toNat + 64 ≤ a.size) (s : UInt32) : UInt32 :=
@@ -167,6 +174,58 @@ to a single 128-bit residue at the end of a 64-byte chunk. -/
     hwTail4 a hs (i + 8) fin hle hfin (crc32c_u64 s (loadU64LE a i hs hb))
   else
     hwTail4 a hs i fin hi hfin s
+
+/-- Absorb `< 32` remaining bytes via optional `crc128` + `hwTail8`, exiting in
+one branch when no `< 16 B` tail bytes remain. -/
+@[inline] def hwTail16 (a : @& ByteArray) (hs : a.size < USize.size) (i fin : USize)
+    (hi : i.toNat ≤ fin.toNat) (hfin : fin.toNat ≤ a.size) (s : UInt32) : UInt32 :=
+  if h16 : 16 ≤ fin - i then
+    have hsub : (fin - i).toNat = fin.toNat - i.toNat :=
+      USize.toNat_sub_of_le fin i (USize.le_iff_toNat_le.mpr hi)
+    have h16' : 16 ≤ fin.toNat - i.toNat := by
+      have := USize.le_iff_toNat_le.mp h16
+      have e16 : (16 : USize).toNat = 16 := by simp
+      omega
+    have hi16 : (i + 16).toNat = i.toNat + 16 := usize_add_toNat i 16 (by omega)
+    have hle : (i + 16).toNat ≤ fin.toNat := by omega
+    have hb : i.toNat + 16 ≤ a.size := by omega
+    let s := crc128 a hs i hb s
+    if _hne : i + 16 < fin then
+      hwTail8 a hs (i + 16) fin hle hfin s
+    else
+      s
+  else if _hne : i < fin then
+    hwTail8 a hs i fin hi hfin s
+  else
+    s
+
+/-- Loop-free `< 96 B` hardware path (`[0..31]`, `[32..63]`, `[64..95]`),
+inlined directly into `rawExtendHwUSize` / `extendHwRaw` with zero stack frame. -/
+@[inline] def hwShort (a : @& ByteArray) (hs : a.size < USize.size) (i fin : USize)
+    (hi : i.toNat ≤ fin.toNat) (hfin : fin.toNat ≤ a.size) (s : UInt32) : UInt32 :=
+  if h32 : 32 ≤ fin - i then
+    have hsub : (fin - i).toNat = fin.toNat - i.toNat :=
+      USize.toNat_sub_of_le fin i (USize.le_iff_toNat_le.mpr hi)
+    if h64 : 64 ≤ fin - i then
+      have h64' : 64 ≤ fin.toNat - i.toNat := by
+        have := USize.le_iff_toNat_le.mp h64
+        have e64 : (64 : USize).toNat = 64 := by simp
+        omega
+      have hi64 : (i + 64).toNat = i.toNat + 64 := usize_add_toNat i 64 (by omega)
+      have hle : (i + 64).toNat ≤ fin.toNat := by omega
+      have hb : i.toNat + 64 ≤ a.size := by omega
+      hwTail16 a hs (i + 64) fin hle hfin (crc512 a hs i hb s)
+    else
+      have h32' : 32 ≤ fin.toNat - i.toNat := by
+        have := USize.le_iff_toNat_le.mp h32
+        have e32 : (32 : USize).toNat = 32 := by simp
+        omega
+      have hi32 : (i + 32).toNat = i.toNat + 32 := usize_add_toNat i 32 (by omega)
+      have hle : (i + 32).toNat ≤ fin.toNat := by omega
+      have hb : i.toNat + 32 ≤ a.size := by omega
+      hwTail16 a hs (i + 32) fin hle hfin (crc256 a hs i hb s)
+  else
+    hwTail16 a hs i fin hi hfin s
 
 /-- Single stream over `a[i, fin)`: 16 bytes per iteration (`ldp` + two `crc32c_u64`),
 then loop-free `8/4/2/1` tail. -/
@@ -426,7 +485,25 @@ decreasing_by omega
   else
     have hle : uoff.toNat ≤ (uoff + ulen).toNat := by omega
     have hfin_sz : (uoff + ulen).toNat ≤ a.size := by omega
-    hwLoop a hs uoff (uoff + ulen) hle hfin_sz s
+    hwShort a hs uoff (uoff + ulen) hle hfin_sz s
+
+/-- Outlined conditioned multi-stream hardware entry for `96 ≤ len`, allowing
+`extendHwRaw` to tail-call this helper and remain 100% frameless on `< 96 B`. -/
+@[noinline] def extendHwMultiRaw (c : UInt32) (a : @& ByteArray) (hs : a.size < USize.size)
+    (len : USize) (h0 : (0 : USize).toNat + len.toNat ≤ a.size) (h96 : 96 ≤ len) : UInt32 :=
+  rawExtendHwMulti (c ^^^ 0xFFFFFFFF) a hs 0 len h0 h96 ^^^ 0xFFFFFFFF
+
+/-- Conditioned `absl::ExtendCrc32c` over the first `len` bytes of `a`, hardware path.
+Compiled inside `Hw.c` with hardware ISA flags so `< 96 B` calls execute as a
+single frameless leaf function with zero internal calls. -/
+@[noinline] def extendHwRaw (c : UInt32) (a : @& ByteArray) (len : USize)
+    (hs : a.size < USize.size) (h : len.toNat ≤ a.size) : UInt32 :=
+  have h0 : (0 : USize).toNat + len.toNat ≤ a.size := by simp; exact h
+  if h96 : 96 ≤ len then
+    extendHwMultiRaw c a hs len h0 h96
+  else
+    have hle : (0 : USize).toNat ≤ len.toNat := by simp
+    hwShort a hs 0 len hle h (c ^^^ 0xFFFFFFFF) ^^^ 0xFFFFFFFF
 
 /-- Unconditioned CRC32C state update over `a[off, off + len)`, hardware path. -/
 @[inline] def rawExtendHw (s : UInt32) (a : @& ByteArray) (off len : @& Nat)

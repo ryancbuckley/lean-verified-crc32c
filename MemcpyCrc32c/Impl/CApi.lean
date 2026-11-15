@@ -24,18 +24,18 @@ import MemcpyCrc32c.Impl.Dispatch
 
 namespace Crc32c
 
-/-- `absl::ExtendCrc32c` over the first `len` bytes of `a`, dispatched. -/
-@[noinline] def extendRaw (c : UInt32) (a : @& ByteArray) (len : USize) (hs : a.size < USize.size)
-    (h : len.toNat ≤ a.size) : UInt32 :=
-  have h0 : (0 : USize).toNat + len.toNat ≤ a.size := by simp; exact h
-  if hwAvailable then rawExtendHwUSize (c ^^^ 0xFFFFFFFF) a hs 0 len h0 ^^^ 0xFFFFFFFF
-  else rawExtendPortableUSize (c ^^^ 0xFFFFFFFF) a hs 0 len h0 ^^^ 0xFFFFFFFF
-
 /-- As `extendRaw`, always on the portable path. For benchmarks and tests. -/
 @[noinline] def extendPortableRaw (c : UInt32) (a : @& ByteArray) (len : USize) (hs : a.size < USize.size)
     (h : len.toNat ≤ a.size) : UInt32 :=
   have h0 : (0 : USize).toNat + len.toNat ≤ a.size := by simp; exact h
   rawExtendPortableUSize (c ^^^ 0xFFFFFFFF) a hs 0 len h0 ^^^ 0xFFFFFFFF
+
+/-- `absl::ExtendCrc32c` over the first `len` bytes of `a`, dispatched.
+Tail-calls `extendHwRaw` or `extendPortableRaw` with zero stack frame. -/
+@[noinline] def extendRaw (c : UInt32) (a : @& ByteArray) (len : USize) (hs : a.size < USize.size)
+    (h : len.toNat ≤ a.size) : UInt32 :=
+  if hwAvailable then extendHwRaw c a len hs h
+  else extendPortableRaw c a len hs h
 
 /-- Whether the hardware path is in use. -/
 @[noinline] def hwAvailableRaw (_ : Unit) : Bool := hwAvailable

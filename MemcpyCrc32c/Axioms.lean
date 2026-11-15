@@ -84,4 +84,5 @@ open Crc32c
 
 -- Phase 6: entry points behind the C++ wrapper.
 #print axioms extendRaw_spec
+#print axioms extendHwRaw_spec
 #print axioms extendPortableRaw_spec

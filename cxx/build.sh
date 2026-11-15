@@ -42,7 +42,7 @@ for m in Models Trusted; do
   compile_c "lean-simd-models/.lake/build/ir/SimdModels/$m.c" ""
 done
 
-"$CXX" -std=c++17 -O2 -fno-exceptions -fno-rtti $CFLAGS_EXTRA -I"$PREFIX/include" -Icxx \
+"$CXX" -std=c++17 -O3 -fno-exceptions -fno-rtti $CFLAGS_EXTRA -I"$PREFIX/include" -Icxx \
   -c cxx/leanmemcpy.cc -o "$OUT/leanmemcpy.o" \
   2> >(grep -v "newer 'macOS'" >&2 || true)
 rm -f "$OUT/libleanmemcpy.a"

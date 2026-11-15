@@ -681,7 +681,7 @@ theorem rawExtendPortableUSize_eq (s : UInt32) (a : ByteArray) (hs : a.size < US
     (uoff ulen : USize) (h : uoff.toNat + ulen.toNat ≤ a.size) :
     rawExtendPortableUSize s a hs uoff ulen h =
       rawExtend s (bytes a uoff.toNat (uoff.toNat + ulen.toNat)) := by
-  unfold rawExtendPortableUSize
+  unfold rawExtendPortableUSize rawExtendPortable4x
   have hpow : 2 ^ System.Platform.numBits = USize.size := rfl
   have hfin : (uoff + ulen).toNat = uoff.toNat + ulen.toNat := by
     rw [USize.toNat_add]; exact Nat.mod_eq_of_lt (by omega)

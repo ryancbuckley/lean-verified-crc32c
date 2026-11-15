@@ -66,6 +66,20 @@ theorem rawExtend_crc128 (a : ByteArray) (p : USize) (hs : a.size < USize.size) 
   dsimp only
   rw [crc32c_u64_eq, crc32c_u64_eq, loadU64LE_eq_load64, loadU64LE_eq_load64, r0, r1]
 
+theorem rawExtend_crc256 (a : ByteArray) (p : USize) (hs : a.size < USize.size) (m : Nat)
+    (h : p.toNat + 32 + m ≤ a.size) (hp : p.toNat + 32 ≤ a.size) (s : UInt32) :
+    rawExtend s (bytes a p.toNat (p.toNat + 32 + m)) =
+      rawExtend (crc256 a hs p hp s) (bytes a (p.toNat + 32) (p.toNat + 32 + m)) := by
+  have hp16 : (p + 16).toNat = p.toNat + 16 := usize_add_toNat p 16 (by omega)
+  unfold crc256
+  dsimp only
+  rw [show p.toNat + 32 + m = p.toNat + 16 + (16 + m) by omega,
+    rawExtend_crc128 a p hs (16 + m) (by omega) (by omega)]
+  rw [show bytes a (p.toNat + 16) (p.toNat + 16 + (16 + m)) =
+      bytes a (p + 16).toNat ((p + 16).toNat + 16 + m) by congr 1 <;> omega,
+    rawExtend_crc128 a (p + 16) hs m (by omega) (by omega)]
+  congr 2 <;> omega
+
 theorem rawExtend_crc512 (a : ByteArray) (p : USize) (hs : a.size < USize.size) (m : Nat)
     (h : p.toNat + 64 + m ≤ a.size) (hp : p.toNat + 64 ≤ a.size) (s : UInt32) :
     rawExtend s (bytes a p.toNat (p.toNat + 64 + m)) =
@@ -173,6 +187,79 @@ theorem hwTail8_eq (a : ByteArray) (hs : a.size < USize.size) (i fin : USize)
       omega
     simp only [h8, ↓reduceDIte]
     exact hwTail4_eq a hs i fin hi hlt8 hfin s
+
+theorem hwTail16_eq (a : ByteArray) (hs : a.size < USize.size) (i fin : USize)
+    (hi : i.toNat ≤ fin.toNat) (hlt32 : fin.toNat - i.toNat < 32)
+    (hfin : fin.toNat ≤ a.size) (s : UInt32) :
+    hwTail16 a hs i fin hi hfin s = rawExtend s (bytes a i.toNat fin.toNat) := by
+  have hsub : (fin - i).toNat = fin.toNat - i.toNat :=
+    USize.toNat_sub_of_le fin i (USize.le_iff_toNat_le.mpr hi)
+  have e16 : (16 : USize).toNat = 16 := by simp
+  unfold hwTail16
+  by_cases h16 : 16 ≤ fin - i
+  · have h16' : 16 ≤ fin.toNat - i.toNat := by have := USize.le_iff_toNat_le.mp h16; omega
+    have hi16 : (i + 16).toNat = i.toNat + 16 := usize_add_toNat i 16 (by omega)
+    simp only [h16, ↓reduceDIte]
+    obtain ⟨m, hm⟩ : ∃ m, fin.toNat = i.toNat + 16 + m := ⟨fin.toNat - i.toNat - 16, by omega⟩
+    by_cases hne : i + 16 < fin
+    · simp only [hne, ↓reduceDIte]
+      rw [hwTail8_eq a hs (i + 16) fin (by omega) (by omega) hfin, hi16]
+      simp only [hm]
+      exact (rawExtend_crc128 a i hs m (by omega) (by omega) s).symm
+    · have hle : fin.toNat ≤ (i + 16).toNat := by
+        have : ¬ (i + 16).toNat < fin.toNat := fun h => hne (USize.lt_iff_toNat_lt.mpr h)
+        omega
+      simp only [hne, ↓reduceDIte, hm,
+        rawExtend_crc128 a i hs m (by omega) (by omega) s,
+        bytes_of_le a (by omega : i.toNat + 16 + m ≤ i.toNat + 16)]
+      rfl
+  · have hlt16 : fin.toNat - i.toNat < 16 := by
+      have : ¬ 16 ≤ (fin - i).toNat := fun h => h16 (USize.le_iff_toNat_le.mpr (by omega))
+      omega
+    simp only [h16, ↓reduceDIte]
+    by_cases hne : i < fin
+    · simp only [hne, ↓reduceDIte]
+      exact hwTail8_eq a hs i fin hi hlt16 hfin s
+    · have hle : fin.toNat ≤ i.toNat := by
+        have : ¬ i.toNat < fin.toNat := fun h => hne (USize.lt_iff_toNat_lt.mpr h)
+        omega
+      simp only [hne, ↓reduceDIte, bytes_of_le a hle]
+      rfl
+
+theorem hwShort_eq (a : ByteArray) (hs : a.size < USize.size) (i fin : USize)
+    (hi : i.toNat ≤ fin.toNat) (hlt96 : fin.toNat - i.toNat < 96)
+    (hfin : fin.toNat ≤ a.size) (s : UInt32) :
+    hwShort a hs i fin hi hfin s = rawExtend s (bytes a i.toNat fin.toNat) := by
+  have hsub : (fin - i).toNat = fin.toNat - i.toNat :=
+    USize.toNat_sub_of_le fin i (USize.le_iff_toNat_le.mpr hi)
+  have e32 : (32 : USize).toNat = 32 := by simp
+  have e64 : (64 : USize).toNat = 64 := by simp
+  unfold hwShort
+  by_cases h32 : 32 ≤ fin - i
+  · have h32' : 32 ≤ fin.toNat - i.toNat := by have := USize.le_iff_toNat_le.mp h32; omega
+    simp only [h32, ↓reduceDIte]
+    by_cases h64 : 64 ≤ fin - i
+    · have h64' : 64 ≤ fin.toNat - i.toNat := by have := USize.le_iff_toNat_le.mp h64; omega
+      have hi64 : (i + 64).toNat = i.toNat + 64 := usize_add_toNat i 64 (by omega)
+      simp only [h64, ↓reduceDIte]
+      rw [hwTail16_eq a hs (i + 64) fin (by omega) (by omega) hfin, hi64]
+      obtain ⟨m, hm⟩ : ∃ m, fin.toNat = i.toNat + 64 + m := ⟨fin.toNat - i.toNat - 64, by omega⟩
+      simp only [hm]
+      exact (rawExtend_crc512 a i hs m (by omega) (by omega) s).symm
+    · have hlt64 : fin.toNat - i.toNat < 64 := by
+        have : ¬ 64 ≤ (fin - i).toNat := fun h => h64 (USize.le_iff_toNat_le.mpr (by omega))
+        omega
+      have hi32 : (i + 32).toNat = i.toNat + 32 := usize_add_toNat i 32 (by omega)
+      simp only [h64, ↓reduceDIte]
+      rw [hwTail16_eq a hs (i + 32) fin (by omega) (by omega) hfin, hi32]
+      obtain ⟨m, hm⟩ : ∃ m, fin.toNat = i.toNat + 32 + m := ⟨fin.toNat - i.toNat - 32, by omega⟩
+      simp only [hm]
+      exact (rawExtend_crc256 a i hs m (by omega) (by omega) s).symm
+  · have hlt32 : fin.toNat - i.toNat < 32 := by
+      have : ¬ 32 ≤ (fin - i).toNat := fun h => h32 (USize.le_iff_toNat_le.mpr (by omega))
+      omega
+    simp only [h32, ↓reduceDIte]
+    exact hwTail16_eq a hs i fin hi hlt32 hfin s
 
 theorem hwLoop_eq (a : ByteArray) (hs : a.size < USize.size) (fin : USize)
     (hfin : fin.toNat ≤ a.size) :
@@ -910,10 +997,24 @@ theorem rawExtendHwUSize_eq (s : UInt32) (a : ByteArray) (hs : a.size < USize.si
   have hpow : 2 ^ System.Platform.numBits = USize.size := rfl
   have hfin : (uoff + ulen).toNat = uoff.toNat + ulen.toNat := by
     rw [USize.toNat_add]; exact Nat.mod_eq_of_lt (by omega)
+  have e96 : (96 : USize).toNat = 96 := by simp
   by_cases h96 : 96 ≤ ulen
   · simp only [h96, ↓reduceDIte, rawExtendHwMulti_eq]
+  · have hlt96 : ulen.toNat < 96 := by
+      have : ¬ 96 ≤ ulen.toNat := fun h => h96 (USize.le_iff_toNat_le.mpr (by omega))
+      omega
+    simp only [h96, ↓reduceDIte]
+    rw [hwShort_eq a hs uoff (uoff + ulen) (by omega) (by omega) (by omega), hfin]
+
+theorem extendHwRaw_eq_rawExtendHwUSize (c : UInt32) (a : ByteArray) (len : USize)
+    (hs : a.size < USize.size) (h : len.toNat ≤ a.size) :
+    extendHwRaw c a len hs h =
+      rawExtendHwUSize (c ^^^ 0xFFFFFFFF) a hs 0 len (by simp; exact h) ^^^ 0xFFFFFFFF := by
+  unfold extendHwRaw extendHwMultiRaw rawExtendHwUSize
+  have z : (0 : USize) + len = len := USize.zero_add len
+  by_cases h96 : 96 ≤ len
   · simp only [h96, ↓reduceDIte]
-    rw [hwLoop_eq a hs _ (by omega) _ _ _ _ rfl, hfin]
+  · simp only [h96, ↓reduceDIte, z]
 
 /-- The hardware path computes the reference update on any in-bounds range. -/
 theorem rawExtendHw_eq (s : UInt32) (a : ByteArray) (off len : Nat) (h : off + len ≤ a.size) :

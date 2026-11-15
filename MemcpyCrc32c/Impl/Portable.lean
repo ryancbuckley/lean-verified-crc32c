@@ -360,6 +360,48 @@ def fold209_4x (a : @& ByteArray) (hs : a.size < USize.size) (i stop L L2 L3 : U
 termination_by stop.toNat - i.toNat
 decreasing_by omega
 
+/-- Outlined 4-stream portable entry (`2048 ≤ ulen`), keeping `fold209_4x`'s
+22-argument call frame out of `< 2048 B` callers (`extendPortableRaw`, `extendPortable`). -/
+@[noinline] def rawExtendPortable4x (s : UInt32) (a : @& ByteArray) (hs : a.size < USize.size)
+    (uoff ulen : USize) (h : uoff.toNat + ulen.toNat ≤ a.size) (h4x : 2048 ≤ ulen) : UInt32 :=
+  have hpow : 2 ^ System.Platform.numBits = USize.size := rfl
+  have hfin : (uoff + ulen).toNat = uoff.toNat + ulen.toNat := by
+    rw [USize.toNat_add]; exact Nat.mod_eq_of_lt (by omega)
+  have e2048 := usize_2048_toNat
+  have h4x' : 2048 ≤ ulen.toNat := by have := USize.le_iff_toNat_le.mp h4x; omega
+  have e32 : (32 : USize).toNat = 32 := by simp
+  have e8 : (8 : USize).toNat = 8 := by simp
+  have e4 : (4 : USize).toNat = 4 := by simp
+  have e3 : (3 : USize).toNat = 3 := by simp
+  have e2 : (2 : USize).toNat = 2 := by simp
+  let ws := ulen / 32
+  have hws : ws.toNat = ulen.toNat / 32 := by rw [USize.toNat_div, e32]
+  let L := ws * 8
+  have hL : L.toNat = ws.toNat * 8 := by
+    rw [USize.toNat_mul, e8]; exact Nat.mod_eq_of_lt (by omega)
+  let L2 := 2 * L
+  have hL2 : L2.toNat = 2 * L.toNat := by
+    rw [USize.toNat_mul, e2]; exact Nat.mod_eq_of_lt (by omega)
+  let L3 := 3 * L
+  have hL3 : L3.toNat = 3 * L.toNat := by
+    rw [USize.toNat_mul, e3]; exact Nat.mod_eq_of_lt (by omega)
+  let body := (ws - 4) * 8
+  have hsub : (ws - 4).toNat = ws.toNat - 4 := by
+    rw [USize.toNat_sub_of_le ws 4 (USize.le_iff_toNat_le.mpr (by omega)), e4]
+  have hbody : body.toNat = (ws.toNat - 4) * 8 := by
+    rw [USize.toNat_mul, hsub, e8]; exact Nat.mod_eq_of_lt (by omega)
+  have hstop : (uoff + body).toNat = uoff.toNat + body.toNat := by
+    rw [USize.toNat_add]; exact Nat.mod_eq_of_lt (by omega)
+  let L4 := 4 * L
+  have hL4 : L4.toNat = 4 * L.toNat := by
+    rw [USize.toNat_mul, e4]; exact Nat.mod_eq_of_lt (by omega)
+  have htail : (uoff + L4).toNat = uoff.toNat + 4 * L.toNat := by
+    rw [USize.toNat_add, hL4]; exact Nat.mod_eq_of_lt (by omega)
+  let s4 := fold209_4x a hs uoff (uoff + body) L L2 L3
+    (by omega) (by omega) (by omega) hL2 hL3 (by omega)
+    s.toUInt64 0 0 0  0 0 0 0  0 0 0 0  0 0 0 0
+  sliceLoop a hs (uoff + L4) (uoff + ulen) (by omega) (by omega) s4
+
 /-- Fast unboxed `USize` entry once `a.size < USize.size` is established. -/
 @[inline] def rawExtendPortableUSize (s : UInt32) (a : @& ByteArray) (hs : a.size < USize.size)
     (uoff ulen : USize) (h : uoff.toNat + ulen.toNat ≤ a.size) : UInt32 :=
@@ -367,40 +409,7 @@ decreasing_by omega
   have hfin : (uoff + ulen).toNat = uoff.toNat + ulen.toNat := by
     rw [USize.toNat_add]; exact Nat.mod_eq_of_lt (by omega)
   if h4x : 2048 ≤ ulen then
-    have e2048 := usize_2048_toNat
-    have h4x' : 2048 ≤ ulen.toNat := by have := USize.le_iff_toNat_le.mp h4x; omega
-    have e32 : (32 : USize).toNat = 32 := by simp
-    have e8 : (8 : USize).toNat = 8 := by simp
-    have e4 : (4 : USize).toNat = 4 := by simp
-    have e3 : (3 : USize).toNat = 3 := by simp
-    have e2 : (2 : USize).toNat = 2 := by simp
-    let ws := ulen / 32
-    have hws : ws.toNat = ulen.toNat / 32 := by rw [USize.toNat_div, e32]
-    let L := ws * 8
-    have hL : L.toNat = ws.toNat * 8 := by
-      rw [USize.toNat_mul, e8]; exact Nat.mod_eq_of_lt (by omega)
-    let L2 := 2 * L
-    have hL2 : L2.toNat = 2 * L.toNat := by
-      rw [USize.toNat_mul, e2]; exact Nat.mod_eq_of_lt (by omega)
-    let L3 := 3 * L
-    have hL3 : L3.toNat = 3 * L.toNat := by
-      rw [USize.toNat_mul, e3]; exact Nat.mod_eq_of_lt (by omega)
-    let body := (ws - 4) * 8
-    have hsub : (ws - 4).toNat = ws.toNat - 4 := by
-      rw [USize.toNat_sub_of_le ws 4 (USize.le_iff_toNat_le.mpr (by omega)), e4]
-    have hbody : body.toNat = (ws.toNat - 4) * 8 := by
-      rw [USize.toNat_mul, hsub, e8]; exact Nat.mod_eq_of_lt (by omega)
-    have hstop : (uoff + body).toNat = uoff.toNat + body.toNat := by
-      rw [USize.toNat_add]; exact Nat.mod_eq_of_lt (by omega)
-    let L4 := 4 * L
-    have hL4 : L4.toNat = 4 * L.toNat := by
-      rw [USize.toNat_mul, e4]; exact Nat.mod_eq_of_lt (by omega)
-    have htail : (uoff + L4).toNat = uoff.toNat + 4 * L.toNat := by
-      rw [USize.toNat_add, hL4]; exact Nat.mod_eq_of_lt (by omega)
-    let s4 := fold209_4x a hs uoff (uoff + body) L L2 L3
-      (by omega) (by omega) (by omega) hL2 hL3 (by omega)
-      s.toUInt64 0 0 0  0 0 0 0  0 0 0 0  0 0 0 0
-    sliceLoop a hs (uoff + L4) (uoff + ulen) (by omega) (by omega) s4
+    rawExtendPortable4x s a hs uoff ulen h h4x
   else if h40 : 40 ≤ ulen then
     have e40 : (40 : USize).toNat = 40 := by simp
     have h40' : 40 ≤ ulen.toNat := by have := USize.le_iff_toNat_le.mp h40; omega

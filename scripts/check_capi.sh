@@ -1,6 +1,6 @@
 #!/bin/bash
 # Audits and tests the C/C++ wrapper's trust boundary:
-#   1. Static C-IR audit: walks the transitive call graph from the three raw
+#   1. Static C-IR audit: walks the transitive call graph from the four raw
 #      Lean entry points across all generated .c files and fails if any
 #      reachable function reads ByteArray size/header, touches reference counts,
 #      allocates, or dereferences a struct-aligned `lean_sarray_object*`.
@@ -63,6 +63,7 @@ for p in c_files:
 
 roots = [
     "lp_leanmemcpy_Crc32c_extendRaw___redArg",
+    "lp_leanmemcpy_Crc32c_extendHwRaw___redArg",
     "lp_leanmemcpy_Crc32c_extendPortableRaw___redArg",
     "lp_leanmemcpy_Crc32c_hwAvailableRaw___redArg",
 ]
