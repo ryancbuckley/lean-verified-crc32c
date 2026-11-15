@@ -110,9 +110,9 @@ if [ -n "$bad_imports" ]; then
 fi
 
 n=$(printf '%s\n' "$trusted_stripped" | perl -ne 'BEGIN{$c=0} if (/^[^:]+:\d+:\s*(.*)$/ && $1 =~ /\bextern\b/) { $c++; } END{print "$c\n"}')
-ndefs=$(printf '%s\n' "$trusted_stripped" | perl -ne 'BEGIN{$c=0} if (/^[^:]+:\d+:\s*(.*)$/ && $1 =~ /\bdef\b/) { $c++; } END{print "$c\n"}')
+ndefs=$(printf '%s\n' "$trusted_stripped" | perl -ne 'BEGIN{$c=0} if (/^[^:]+:\d+:\s*(.*)$/ && $1 =~ /\b(def|opaque)\b/) { $c++; } END{print "$c\n"}')
 if [ "$n" -ne "$ndefs" ]; then
-  echo "FORBIDDEN (mismatch between @[extern] count ($n) and def count ($ndefs) in $TRUSTED)"
+  echo "FORBIDDEN (mismatch between @[extern] count ($n) and def-or-opaque count ($ndefs) in $TRUSTED)"
   status=1
 fi
 

@@ -124,6 +124,29 @@ static inline uint64_t simdmodels_clmul_hi(uint64_t a, uint64_t b) {
 
 #endif
 
+/* CPU-feature detection for the hardware paths: nonzero only if this CPU has
+ * both the CRC32C and the 64x64 carry-less-multiply instructions bound above.
+ * Setting the environment variable SIMDMODELS_DISABLE_HW (to anything) forces
+ * zero, so the fallback path can be tested on any machine. */
+extern char *getenv(const char *);
+#if defined(__aarch64__) && defined(__linux__)
+extern unsigned long getauxval(unsigned long);
+#endif
+static inline uint8_t simdmodels_cpu_has_crc_clmul(void) {
+  if (getenv("SIMDMODELS_DISABLE_HW") != 0) return 0;
+#if defined(__aarch64__) && defined(__APPLE__)
+  return 1; /* every Apple arm64 CPU has FEAT_CRC32 and FEAT_PMULL */
+#elif defined(__aarch64__) && defined(__linux__)
+  unsigned long caps = getauxval(16 /* AT_HWCAP */);
+  return (caps & (1ul << 7) /* HWCAP_CRC32 */) && (caps & (1ul << 4) /* HWCAP_PMULL */);
+#elif defined(__x86_64__)
+  return __builtin_cpu_supports("sse4.2") && __builtin_cpu_supports("pclmul");
+#else
+  return 0;
+#endif
+}
+#define SIMDMODELS_CPU_HAS_CRC_CLMUL() simdmodels_cpu_has_crc_clmul()
+
 #define SIMDMODELS_CRC32C_U8(c, v)  simdmodels_crc32c_u8((c), (v))
 #define SIMDMODELS_CRC32C_U16(c, v) simdmodels_crc32c_u16((c), (v))
 #define SIMDMODELS_CRC32C_U32(c, v) simdmodels_crc32c_u32((c), (v))

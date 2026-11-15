@@ -10,4 +10,5 @@ import MemcpyCrc32c.Portable
 import MemcpyCrc32c.Hw
 import MemcpyCrc32c.HwKernel
 import MemcpyCrc32c.Memcpy
+import MemcpyCrc32c.Dispatch
 import MemcpyCrc32c.Axioms

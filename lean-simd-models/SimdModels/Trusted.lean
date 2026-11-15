@@ -17,6 +17,8 @@ is an assumption, invisible to `#print axioms`; this file is its record.
 | `clmulLo`    | `PMULL` (low half)     | `PCLMULQDQ imm 0` (low half)  |
 | `clmulHi`    | `PMULL` (high half)    | `PCLMULQDQ imm 0` (high half) |
 | `loadU64LE`  | `LDR Xt` / `LDR Qt` ½  | `MOV r64, m64` / `MOVDQU` ½   |
+
+Plus `cpuHasCrcClmul`, the CPU-feature test that guards the hardware paths.
 -/
 import SimdModels.Models
 
@@ -44,5 +46,13 @@ def clmulHi (a b : UInt64) : UInt64 := Model.clmulHi a b
 def loadU64LE (a : @& ByteArray) (i : USize) (hs : a.size < USize.size)
     (h : i.toNat + 8 ≤ a.size) : UInt64 :=
   Model.loadU64LE a i hs h
+
+/-- CPU-feature detection: `true` only if this CPU has every instruction bound
+above. It is `opaque`, so no proof can depend on its value: any theorem about
+dispatching code necessarily covers both answers. Trusted: that a `true`
+answer is right, since running a hardware path without the instructions
+faults. -/
+@[extern c inline "SIMDMODELS_CPU_HAS_CRC_CLMUL()"]
+opaque cpuHasCrcClmul : Unit → Bool
 
 end SimdModels

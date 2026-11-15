@@ -8,7 +8,7 @@ standard axioms (`propext`, `Classical.choice`, `Quot.sound`), with zero
 -/
 import MemcpyCrc32c.Vectors
 import MemcpyCrc32c.Portable
-import MemcpyCrc32c.Memcpy
+import MemcpyCrc32c.Dispatch
 import SimdModels
 
 open Crc32c
@@ -74,3 +74,8 @@ open Crc32c
 -- Phase 5: theorem 6 (`memcpyCrc32c_spec`) for each path.
 #print axioms memcpyCrc32cPortable_spec
 #print axioms memcpyCrc32cHw_spec
+
+-- Dispatched public entry points. `memcpyCrc32c_spec` is the headline theorem.
+#print axioms extendCrc32c_eq_spec
+#print axioms computeCrc32c_eq_spec
+#print axioms memcpyCrc32c_spec

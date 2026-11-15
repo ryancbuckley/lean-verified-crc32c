@@ -6,6 +6,7 @@ Exits non-zero on the first mismatch.
 import MemcpyCrc32c.Impl.Arith
 import MemcpyCrc32c.Impl.Portable
 import MemcpyCrc32c.Impl.Hw
+import MemcpyCrc32c.Impl.Dispatch
 
 open Crc32c
 
@@ -34,6 +35,15 @@ def check (line : String) : Except String Unit := do
     fail (extend c bs) w
     fail (extendPortable c bs) w
     fail (extendHw c bs) w
+    fail (extendCrc32c c bs) w
+    -- the dispatched fused copy: CRC must match abseil and the copy must be exact
+    let dst := ByteArray.mk (Array.replicate (bs.size + 5) 0x5a)
+    if hd : 3 + bs.size ≤ dst.size then
+      let (d, r) := memcpyCrc32c dst 3 bs 0 bs.size c (by omega) hd
+      fail r w
+      if d.extract 3 (3 + bs.size) != bs || d.size != bs.size + 5
+          || d.extract 0 3 != dst.extract 0 3 || d.extract (3 + bs.size) (bs.size + 5) != dst.extract (3 + bs.size) (bs.size + 5) then
+        throw s!"COPY MISMATCH: {line.take 100}"
     if h : 16 ≤ bs.size then
       let off := c.toNat % 7
       let len := bs.size - off - (c.toNat / 7) % 7
@@ -55,4 +65,4 @@ partial def loop (h : IO.FS.Stream) (n : Nat) : IO Nat := do
 
 def main : IO Unit := do
   let n ← loop (← IO.getStdin) 0
-  IO.println s!"OK: {n} cases agree with abseil"
+  IO.println s!"OK: {n} cases agree with abseil (hardware path available: {hwAvailable})"
