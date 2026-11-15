@@ -2,7 +2,7 @@
 
 `lean-verified-crc32c` is a formally verified implementation of CRC32C (`ExtendCrc32c`, `ComputeCrc32c`, and the CRC algebra operations `Concat`, `RemovePrefix`, `RemoveSuffix`, `ExtendByZeroes`) and fused memory-copy-with-CRC32C (`MemcpyCrc32c`) written in **Lean 4** (`v4.35.0`), with a zero-allocation **C11 / C++17** static library (`cxx/leancrc32c.h`) that mirrors Abseil's CRC32C API. The library still links against Lean's runtime shared libraries (`libleanshared`, `libInit_shared`; see `build/cxx/LINK_FLAGS`) for one-time module initialization.
 
-**Naming.** In code, the project is called `leancrc32c`: the Lake package, `cxx/leancrc32c.h` / `.cc`, `libleancrc32c.a`, the C functions (`leancrc32c_extend_crc32c`, …), the C++ namespace (`leancrc32c::`), and the compiled Lean symbols (`_lp_leancrc32c_...`). It was originally called `leanmemcpy`.
+**Naming.** In code, the project is called `leancrc32c`: the Lake package, `cxx/leancrc32c.h` / `.cc`, `libleancrc32c.a`, the C functions (`leancrc32c_extend_crc32c`, …), the C++ namespace (`leancrc32c::`), and the compiled Lean symbols (`_lp_leancrc32c_...`). The Lean library and its source directory keep the name `MemcpyCrc32c`, and Lean declarations live in the `Crc32c` namespace.
 
 **Platform status.** Everything here was built, tuned, tested and benchmarked on one machine: an Apple M4 running macOS. x86-64 has only been exercised under Rosetta 2, and no other AArch64 core or operating system has been tried. Read every performance number below as an M4 number.
 
