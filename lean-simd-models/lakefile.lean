@@ -19,3 +19,6 @@ lean_exe hw_diff where
 
 lean_exe asl_check where
   root := `tests.AslCheck
+
+lean_exe asl_arm64_check where
+  root := `tests.AslArm64Check

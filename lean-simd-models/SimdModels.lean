@@ -5,3 +5,5 @@ import SimdModels.Trusted
 import SimdModels.Semantics
 import SimdModels.V128
 import SimdModels.IntelSdm
+import SimdModels.Arm64
+import SimdModels.Arm64Lemmas
