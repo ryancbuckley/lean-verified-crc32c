@@ -1,6 +1,6 @@
 /-
-Machine-code verification of `_lp_leanmemcpy_Crc32c_combine3` (`44` instructions)
-and `_lp_leanmemcpy_Crc32c_combine6` (`65` instructions) from `HwCombine.c.o`
+Machine-code verification of `_lp_leancrc32c_Crc32c_combine3` (`44` instructions)
+and `_lp_leancrc32c_Crc32c_combine6` (`65` instructions) from `HwCombine.c.o`
 against `Crc32c.combine3` and `Crc32c.combine6`.
 
 Proves termination, functional equivalence across both the `< 512`-word 2 KiB
@@ -307,7 +307,7 @@ private theorem usize_lt_512_iff (ws : USize) :
   change ws.toUInt64.toNat < 512 ↔ _
   rw [eu64, USize.lt_iff_toNat_lt, e512]
 
-/-- Machine-code specification of `_lp_leanmemcpy_Crc32c_combine3`:
+/-- Machine-code specification of `_lp_leancrc32c_Crc32c_combine3`:
 executes from `L.combine3Base` to caller return address `s.regs.x30`, placing
 `Crc32c.combine3 ws s0 s1 s2` in `W0`, with zero stack writes (`s'.mem = s.mem`)
 and full AAPCS64 register preservation (`CalleeSaved s s'`). -/
@@ -431,7 +431,7 @@ theorem combine3_mc_spec {code : UInt64 → Option UInt32} {L : CodeLayout}
   · exact hcs1.trans ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl,
                        rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
 
-/-- Machine-code specification of `_lp_leanmemcpy_Crc32c_combine6`:
+/-- Machine-code specification of `_lp_leancrc32c_Crc32c_combine6`:
 executes from `L.combine6Base` to caller return address `s.regs.x30`, placing
 `Crc32c.combine6 ws s0 s1 s2 s3 s4 s5` in `W0`, with zero stack writes (`s'.mem = s.mem`)
 and full AAPCS64 register preservation (`CalleeSaved s s'`). -/

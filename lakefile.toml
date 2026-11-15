@@ -1,4 +1,4 @@
-name = "leanmemcpy"
+name = "leancrc32c"
 version = "0.1.0"
 defaultTargets = ["MemcpyCrc32c"]
 

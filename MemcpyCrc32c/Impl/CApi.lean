@@ -15,7 +15,7 @@ and sanitizers.
 Lean does not allow `@[export]` on functions with borrowed parameters (an
 exported function owns its arguments and would release the array, which
 writes to the header). The wrapper therefore calls these by their compiled
-symbol names, `lp_leanmemcpy_Crc32c_extendRaw` and so on.
+symbol names, `lp_leancrc32c_Crc32c_extendRaw` and so on.
 
 The proof arguments are the wrapper's contract: the pointer is valid for
 `len` bytes. They are erased at run time and cannot be checked there.

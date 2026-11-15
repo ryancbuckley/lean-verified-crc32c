@@ -1,5 +1,5 @@
 #!/bin/bash
-# Builds Abseil with CMake (Release, default flags), builds libleanmemcpy.a,
+# Builds Abseil with CMake (Release, default flags), builds libleancrc32c.a,
 # links bench/full_bench.cc into a single-process benchmark binary, and runs
 # the full Phase 6 benchmarking protocol, writing raw and summary CSVs under
 # reports/.

@@ -38,7 +38,7 @@
 
 #include "absl/crc/crc32c.h"
 #include "absl/strings/string_view.h"
-#include "leanmemcpy.h"
+#include "leancrc32c.h"
 
 namespace {
 
@@ -180,10 +180,10 @@ inline uint32_t RunOne(ContenderId id, uint8_t* dst, const uint8_t* src, size_t 
       out = Crc32cSlice8Memcpy(dst, src, n, init);
       break;
     case ContenderId::kLeanMemcpyPortable:
-      out = leanmemcpy::MemcpyCrc32cPortable(dst, src, n, init);
+      out = leancrc32c::MemcpyCrc32cPortable(dst, src, n, init);
       break;
     case ContenderId::kLeanMemcpyDispatched:
-      out = leanmemcpy::MemcpyCrc32c(dst, src, n, init);
+      out = leancrc32c::MemcpyCrc32c(dst, src, n, init);
       break;
     case ContenderId::kAbslExtend:
       out = static_cast<uint32_t>(
@@ -194,10 +194,10 @@ inline uint32_t RunOne(ContenderId id, uint8_t* dst, const uint8_t* src, size_t 
       out = Crc32cSlice8Extend(init, src, n);
       break;
     case ContenderId::kLeanExtendPortable:
-      out = leanmemcpy::ExtendCrc32cPortable(init, src, n);
+      out = leancrc32c::ExtendCrc32cPortable(init, src, n);
       break;
     case ContenderId::kLeanExtendDispatched:
-      out = leanmemcpy::ExtendCrc32c(init, src, n);
+      out = leancrc32c::ExtendCrc32c(init, src, n);
       break;
   }
   asm volatile("" : "+r"(out) : : "memory");
@@ -276,11 +276,11 @@ int main(int argc, char** argv) {
 
   InitSlice8Tables();
   const std::string pin_desc = PinCurrentThread();
-  const bool hw_avail = leanmemcpy::HardwareAvailable();
+  const bool hw_avail = leancrc32c::HardwareAvailable();
 
-  std::printf("# leanmemcpy Phase 6 Benchmark Suite\n");
+  std::printf("# leancrc32c Phase 6 Benchmark Suite\n");
   std::printf("# Thread pinning: %s\n", pin_desc.c_str());
-  std::printf("# leanmemcpy::HardwareAvailable(): %s\n\n", hw_avail ? "true" : "false");
+  std::printf("# leancrc32c::HardwareAvailable(): %s\n\n", hw_avail ? "true" : "false");
 
   constexpr size_t kMaxSize = 64u << 20;
   constexpr size_t kEvictSize = 64u << 20;
@@ -314,10 +314,10 @@ int main(int argc, char** argv) {
       const uint32_t ref = static_cast<uint32_t>(
           absl::ComputeCrc32c({reinterpret_cast<const char*>(sbase + off), n}));
       if (Crc32cSlice8Extend(0, sbase + off, n) != ref ||
-          leanmemcpy::ExtendCrc32cPortable(0, sbase + off, n) != ref ||
-          leanmemcpy::ExtendCrc32c(0, sbase + off, n) != ref ||
-          leanmemcpy::MemcpyCrc32cPortable(dbase + off, sbase + off, n, 0) != ref ||
-          leanmemcpy::MemcpyCrc32c(dbase + ((off + 3) & 7), sbase + off, n, 0) != ref) {
+          leancrc32c::ExtendCrc32cPortable(0, sbase + off, n) != ref ||
+          leancrc32c::ExtendCrc32c(0, sbase + off, n) != ref ||
+          leancrc32c::MemcpyCrc32cPortable(dbase + off, sbase + off, n, 0) != ref ||
+          leancrc32c::MemcpyCrc32c(dbase + ((off + 3) & 7), sbase + off, n, 0) != ref) {
         std::fprintf(stderr, "CRC mismatch in pre-benchmark self-check at n=%zu off=%zu\n", n, off);
         return 1;
       }
@@ -327,7 +327,7 @@ int main(int argc, char** argv) {
   // ~80 ms P-core ramp-up before timed measurements.
   volatile uint32_t warm_sink = 0;
   for (int i = 0; i < 4000; ++i) {
-    warm_sink ^= leanmemcpy::ExtendCrc32c(0, sbase, 65536);
+    warm_sink ^= leancrc32c::ExtendCrc32c(0, sbase, 65536);
   }
 
   FILE* raw_fp = std::fopen(raw_csv_path, "w");

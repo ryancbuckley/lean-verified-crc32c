@@ -19,7 +19,7 @@
 //     dereference a `lean_sarray_object*`; scripts/check_capi.sh checks the
 //     transitive C call graph and tests this under guard pages, debug
 //     assertions, and ASan/UBSan.
-#include "leanmemcpy.h"
+#include "leancrc32c.h"
 
 #include <atomic>
 #include <cstdlib>
@@ -29,21 +29,21 @@
 #include <lean/lean.h>
 
 #if defined(__GNUC__) || defined(__clang__)
-#define LEANMEMCPY_NOINLINE __attribute__((noinline))
+#define LEANCRC32C_NOINLINE __attribute__((noinline))
 #else
-#define LEANMEMCPY_NOINLINE
+#define LEANCRC32C_NOINLINE
 #endif
 
 extern "C" {
 void lean_initialize_runtime_module();
 void lean_io_mark_end_initialization();
-lean_object* initialize_leanmemcpy_MemcpyCrc32c_Impl_CApi(uint8_t builtin);
+lean_object* initialize_leancrc32c_MemcpyCrc32c_Impl_CApi(uint8_t builtin);
 // Compiled Lean functions, called by symbol name because Lean cannot
 // `@[export]` a function with a borrowed parameter.
-uint32_t lp_leanmemcpy_Crc32c_extendRaw___redArg(uint32_t c, lean_object* a, size_t len);
-uint32_t lp_leanmemcpy_Crc32c_extendHwRaw___redArg(uint32_t c, lean_object* a, size_t len);
-uint32_t lp_leanmemcpy_Crc32c_extendPortableRaw___redArg(uint32_t c, lean_object* a, size_t len);
-uint8_t lp_leanmemcpy_Crc32c_hwAvailableRaw___redArg();
+uint32_t lp_leancrc32c_Crc32c_extendRaw___redArg(uint32_t c, lean_object* a, size_t len);
+uint32_t lp_leancrc32c_Crc32c_extendHwRaw___redArg(uint32_t c, lean_object* a, size_t len);
+uint32_t lp_leancrc32c_Crc32c_extendPortableRaw___redArg(uint32_t c, lean_object* a, size_t len);
+uint8_t lp_leancrc32c_Crc32c_hwAvailableRaw___redArg();
 }
 
 namespace {
@@ -60,15 +60,15 @@ pthread_once_t g_once = PTHREAD_ONCE_INIT;
 
 void DoInitialize() noexcept {
   lean_initialize_runtime_module();
-  lean_object* res = initialize_leanmemcpy_MemcpyCrc32c_Impl_CApi(1);
+  lean_object* res = initialize_leancrc32c_MemcpyCrc32c_Impl_CApi(1);
   if (!lean_io_result_is_ok(res)) std::abort();
   lean_dec_ref(res);
   lean_io_mark_end_initialization();
-  const uint8_t hw = lp_leanmemcpy_Crc32c_hwAvailableRaw___redArg();
+  const uint8_t hw = lp_leancrc32c_Crc32c_hwAvailableRaw___redArg();
   g_state.store(hw ? kStateHw : kStatePortable, std::memory_order_release);
 }
 
-LEANMEMCPY_NOINLINE uint8_t EnsureInitializedSlow() noexcept {
+LEANCRC32C_NOINLINE uint8_t EnsureInitializedSlow() noexcept {
   pthread_once(&g_once, &DoInitialize);
   return g_state.load(std::memory_order_acquire);
 }
@@ -161,44 +161,44 @@ inline void CopyUpTo64(void* dest, const void* src, size_t n) noexcept {
   d[n - 1] = b2;
 }
 
-LEANMEMCPY_NOINLINE uint32_t ExtendCrc32cInit(uint32_t initial_crc, const void* data,
+LEANCRC32C_NOINLINE uint32_t ExtendCrc32cInit(uint32_t initial_crc, const void* data,
                                               size_t count) noexcept {
   const uint8_t s = EnsureInitializedSlow();
   if (s == kStateHw) {
-    return lp_leanmemcpy_Crc32c_extendHwRaw___redArg(
+    return lp_leancrc32c_Crc32c_extendHwRaw___redArg(
         initial_crc, BorrowAsByteArray(data), count);
   }
-  return lp_leanmemcpy_Crc32c_extendPortableRaw___redArg(
+  return lp_leancrc32c_Crc32c_extendPortableRaw___redArg(
       initial_crc, BorrowAsByteArray(data), count);
 }
 
-LEANMEMCPY_NOINLINE uint32_t ExtendCrc32cPortableInit(uint32_t initial_crc, const void* data,
+LEANCRC32C_NOINLINE uint32_t ExtendCrc32cPortableInit(uint32_t initial_crc, const void* data,
                                                       size_t count) noexcept {
   EnsureInitializedSlow();
-  return lp_leanmemcpy_Crc32c_extendPortableRaw___redArg(
+  return lp_leancrc32c_Crc32c_extendPortableRaw___redArg(
       initial_crc, BorrowAsByteArray(data), count);
 }
 
-LEANMEMCPY_NOINLINE uint32_t MemcpyCrc32cLarge(void* dest, const void* src, size_t count,
+LEANCRC32C_NOINLINE uint32_t MemcpyCrc32cLarge(void* dest, const void* src, size_t count,
                                                uint32_t initial_crc, uint8_t state) noexcept {
   std::memcpy(dest, src, count);
   if (__builtin_expect(state == kStateHw, 1)) {
-    return lp_leanmemcpy_Crc32c_extendHwRaw___redArg(
+    return lp_leancrc32c_Crc32c_extendHwRaw___redArg(
         initial_crc, BorrowAsByteArray(src), count);
   }
-  return lp_leanmemcpy_Crc32c_extendPortableRaw___redArg(
+  return lp_leancrc32c_Crc32c_extendPortableRaw___redArg(
       initial_crc, BorrowAsByteArray(src), count);
 }
 
-LEANMEMCPY_NOINLINE uint32_t MemcpyCrc32cInit(void* dest, const void* src, size_t count,
+LEANCRC32C_NOINLINE uint32_t MemcpyCrc32cInit(void* dest, const void* src, size_t count,
                                               uint32_t initial_crc) noexcept {
   const uint8_t s = EnsureInitializedSlow();
   if (count <= 64) {
     const uint32_t crc =
         (s == kStateHw)
-            ? lp_leanmemcpy_Crc32c_extendHwRaw___redArg(
+            ? lp_leancrc32c_Crc32c_extendHwRaw___redArg(
                   initial_crc, BorrowAsByteArray(src), count)
-            : lp_leanmemcpy_Crc32c_extendPortableRaw___redArg(
+            : lp_leancrc32c_Crc32c_extendPortableRaw___redArg(
                   initial_crc, BorrowAsByteArray(src), count);
     CopyUpTo64(dest, src, count);
     return crc;
@@ -206,18 +206,18 @@ LEANMEMCPY_NOINLINE uint32_t MemcpyCrc32cInit(void* dest, const void* src, size_
   return MemcpyCrc32cLarge(dest, src, count, initial_crc, s);
 }
 
-LEANMEMCPY_NOINLINE uint32_t MemcpyCrc32cPortableLarge(void* dest, const void* src, size_t count,
+LEANCRC32C_NOINLINE uint32_t MemcpyCrc32cPortableLarge(void* dest, const void* src, size_t count,
                                                        uint32_t initial_crc) noexcept {
   std::memcpy(dest, src, count);
-  return lp_leanmemcpy_Crc32c_extendPortableRaw___redArg(
+  return lp_leancrc32c_Crc32c_extendPortableRaw___redArg(
       initial_crc, BorrowAsByteArray(src), count);
 }
 
-LEANMEMCPY_NOINLINE uint32_t MemcpyCrc32cPortableInit(void* dest, const void* src, size_t count,
+LEANCRC32C_NOINLINE uint32_t MemcpyCrc32cPortableInit(void* dest, const void* src, size_t count,
                                                       uint32_t initial_crc) noexcept {
   EnsureInitializedSlow();
   if (count <= 64) {
-    const uint32_t crc = lp_leanmemcpy_Crc32c_extendPortableRaw___redArg(
+    const uint32_t crc = lp_leancrc32c_Crc32c_extendPortableRaw___redArg(
         initial_crc, BorrowAsByteArray(src), count);
     CopyUpTo64(dest, src, count);
     return crc;
@@ -229,31 +229,31 @@ LEANMEMCPY_NOINLINE uint32_t MemcpyCrc32cPortableInit(void* dest, const void* sr
 
 extern "C" {
 
-uint32_t leanmemcpy_extend_crc32c(uint32_t initial_crc, const void* data, size_t count) noexcept {
+uint32_t leancrc32c_extend_crc32c(uint32_t initial_crc, const void* data, size_t count) noexcept {
   if (count == 0) return initial_crc;
   const uint8_t s = g_state.load(std::memory_order_acquire);
   if (__builtin_expect(s == kStateHw, 1)) {
-    return lp_leanmemcpy_Crc32c_extendHwRaw___redArg(
+    return lp_leancrc32c_Crc32c_extendHwRaw___redArg(
         initial_crc, BorrowAsByteArray(data), count);
   }
   if (__builtin_expect(s == kStateUninitialized, 0)) {
     return ExtendCrc32cInit(initial_crc, data, count);
   }
-  return lp_leanmemcpy_Crc32c_extendPortableRaw___redArg(
+  return lp_leancrc32c_Crc32c_extendPortableRaw___redArg(
       initial_crc, BorrowAsByteArray(data), count);
 }
 
-uint32_t leanmemcpy_extend_crc32c_portable(uint32_t initial_crc, const void* data,
+uint32_t leancrc32c_extend_crc32c_portable(uint32_t initial_crc, const void* data,
                                            size_t count) noexcept {
   if (count == 0) return initial_crc;
   if (__builtin_expect(g_state.load(std::memory_order_acquire) == kStateUninitialized, 0)) {
     return ExtendCrc32cPortableInit(initial_crc, data, count);
   }
-  return lp_leanmemcpy_Crc32c_extendPortableRaw___redArg(
+  return lp_leancrc32c_Crc32c_extendPortableRaw___redArg(
       initial_crc, BorrowAsByteArray(data), count);
 }
 
-uint32_t leanmemcpy_memcpy_crc32c(void* dest, const void* src, size_t count,
+uint32_t leancrc32c_memcpy_crc32c(void* dest, const void* src, size_t count,
                                   uint32_t initial_crc) noexcept {
   if (count == 0) return initial_crc;
   const uint8_t s = g_state.load(std::memory_order_acquire);
@@ -265,15 +265,15 @@ uint32_t leanmemcpy_memcpy_crc32c(void* dest, const void* src, size_t count,
   }
   const uint32_t crc =
       (__builtin_expect(s == kStateHw, 1))
-          ? lp_leanmemcpy_Crc32c_extendHwRaw___redArg(
+          ? lp_leancrc32c_Crc32c_extendHwRaw___redArg(
                 initial_crc, BorrowAsByteArray(src), count)
-          : lp_leanmemcpy_Crc32c_extendPortableRaw___redArg(
+          : lp_leancrc32c_Crc32c_extendPortableRaw___redArg(
                 initial_crc, BorrowAsByteArray(src), count);
   CopyUpTo64(dest, src, count);
   return crc;
 }
 
-uint32_t leanmemcpy_memcpy_crc32c_portable(void* dest, const void* src, size_t count,
+uint32_t leancrc32c_memcpy_crc32c_portable(void* dest, const void* src, size_t count,
                                            uint32_t initial_crc) noexcept {
   if (count == 0) return initial_crc;
   if (__builtin_expect(g_state.load(std::memory_order_acquire) == kStateUninitialized, 0)) {
@@ -282,13 +282,13 @@ uint32_t leanmemcpy_memcpy_crc32c_portable(void* dest, const void* src, size_t c
   if (count > 64) {
     return MemcpyCrc32cPortableLarge(dest, src, count, initial_crc);
   }
-  const uint32_t crc = lp_leanmemcpy_Crc32c_extendPortableRaw___redArg(
+  const uint32_t crc = lp_leancrc32c_Crc32c_extendPortableRaw___redArg(
       initial_crc, BorrowAsByteArray(src), count);
   CopyUpTo64(dest, src, count);
   return crc;
 }
 
-bool leanmemcpy_hardware_available(void) noexcept {
+bool leancrc32c_hardware_available(void) noexcept {
   uint8_t s = g_state.load(std::memory_order_acquire);
   if (__builtin_expect(s == kStateUninitialized, 0)) {
     s = EnsureInitializedSlow();

@@ -1,5 +1,5 @@
 /-
-Machine-code verification of `_lp_leanmemcpy_Crc32c_hwLoop___redArg` (`99` instructions)
+Machine-code verification of `_lp_leancrc32c_Crc32c_hwLoop___redArg` (`99` instructions)
 from `Hw.c.o` against `Crc32c.rawExtend s (Crc32c.bytes data i.toNat fin.toNat)`.
 
 Covers the 16-byte-per-iteration `ldp` + `2 × crc32cx` inner loop (`idx = 5..12`) and
@@ -710,7 +710,7 @@ private theorem hwLoop_body {code : UInt64 → Option UInt32} {L : CodeLayout}
 
 /-! ### Exported machine-code specification: `hwLoop_mc_spec` -/
 
-/-- Machine-code specification of `_lp_leanmemcpy_Crc32c_hwLoop___redArg`:
+/-- Machine-code specification of `_lp_leancrc32c_Crc32c_hwLoop___redArg`:
 executes from `L.hwLoopBase` to caller return address `s.regs.x30`, placing
 `Crc32c.rawExtend s0 (Crc32c.bytes data i.toNat fin.toNat)` in `W0`, with zero stack
 writes (`s'.mem = s.mem`), guard-page safety (only `[objPtr + 0x18, objPtr + 0x18 + data.size)`

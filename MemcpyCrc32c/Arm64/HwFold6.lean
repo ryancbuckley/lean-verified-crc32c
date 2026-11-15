@@ -1,6 +1,6 @@
 /-
-Machine-code verification of `_lp_leanmemcpy_Crc32c_hwFold6Loop___redArg` (`197` instructions)
-and `_lp_leanmemcpy_Crc32c_hwFold6___redArg` (`186` instructions) from `Hw.c.o`
+Machine-code verification of `_lp_leancrc32c_Crc32c_hwFold6Loop___redArg` (`197` instructions)
+and `_lp_leancrc32c_Crc32c_hwFold6___redArg` (`186` instructions) from `Hw.c.o`
 against `Crc32c.hwFold6Loop`, `Crc32c.hwFold6`, and `Crc32c.rawExtend`.
 
 Also provides reusable permissioned stack-frame (`MemOutsideEq`, `StackDelta`) and
@@ -1483,7 +1483,7 @@ private theorem hwFold6Loop_setup {code : UInt64 → Option UInt32} {Layout : Co
     ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩,
     rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
 
-/-- Machine-code specification of `_lp_leanmemcpy_Crc32c_hwFold6Loop___redArg`:
+/-- Machine-code specification of `_lp_leancrc32c_Crc32c_hwFold6Loop___redArg`:
 executes from `Layout.hwFold6LoopBase` (reading register arguments `X0..X7` and
 Darwin AAPCS64 stack arguments at `[s.sp, s.sp + 0x48)`), tail-calling `combine6`
 and returning to `s.regs.x30` with `W0 = Crc32c.hwFold6Loop ...`, touching only
@@ -2228,7 +2228,7 @@ private theorem hwFold6_s5_prep {code : UInt64 → Option UInt32} {Layout : Code
     · unfold Crc32c.init512Lo Crc32c.fold128Lo; dsimp only; ac_rfl
     · unfold Crc32c.init512Hi Crc32c.fold128Hi; dsimp only; ac_rfl
 
-/-- Machine-code specification of `_lp_leanmemcpy_Crc32c_hwFold6___redArg` (`186` insns):
+/-- Machine-code specification of `_lp_leancrc32c_Crc32c_hwFold6___redArg` (`186` insns):
 executes from `Layout.hwFold6Base` to caller return address `s.regs.x30`, placing
 `Crc32c.rawExtend s_in (Crc32c.bytes a uoff.toNat (uoff.toNat + blocks.toNat * 384))`
 in `W0`, touching only the 256-byte combined stack region `[s.sp - 0x100, s.sp)`

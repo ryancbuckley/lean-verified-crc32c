@@ -2,10 +2,10 @@
 // Abseil under AddressSanitizer + UndefinedBehaviorSanitizer + SanitizerCoverage.
 //
 // Every execution checks all four entry points on the same input:
-//   1. leanmemcpy_extend_crc32c          (dispatched hardware / fallback path)
-//   2. leanmemcpy_extend_crc32c_portable (portable Chorba / slicing-by-8 path)
-//   3. leanmemcpy_memcpy_crc32c          (dispatched fused copy + CRC32C)
-//   4. leanmemcpy_memcpy_crc32c_portable (portable fused copy + CRC32C)
+//   1. leancrc32c_extend_crc32c          (dispatched hardware / fallback path)
+//   2. leancrc32c_extend_crc32c_portable (portable Chorba / slicing-by-8 path)
+//   3. leancrc32c_memcpy_crc32c          (dispatched fused copy + CRC32C)
+//   4. leancrc32c_memcpy_crc32c_portable (portable fused copy + CRC32C)
 // against absl::ExtendCrc32c, plus byte-for-byte destination equality, prefix
 // sentinel preservation, and (alternating 50/50) either exact end-of-buffer
 // ASan heap redzones (`trail == 0`) or 8-byte trailing sentinel checks
@@ -18,7 +18,7 @@
 #include <cstring>
 
 #include "absl/crc/crc32c.h"
-#include "leanmemcpy.h"
+#include "leancrc32c.h"
 
 namespace {
 
@@ -50,20 +50,20 @@ void FillSynthetic(uint8_t* dst, size_t n, const uint8_t* seed, size_t seed_len)
 void CheckAllPaths(uint32_t init, const uint8_t* src, size_t n, size_t d_off,
                    size_t trail, bool use_null_zero) {
   if (n == 0 && use_null_zero) {
-    if (leanmemcpy::ExtendCrc32c(init, nullptr, 0) != init) std::abort();
-    if (leanmemcpy::ExtendCrc32cPortable(init, nullptr, 0) != init) std::abort();
-    if (leanmemcpy::MemcpyCrc32c(nullptr, nullptr, 0, init) != init) std::abort();
-    if (leanmemcpy::MemcpyCrc32cPortable(nullptr, nullptr, 0, init) != init) std::abort();
-    if (init == 0 && leanmemcpy::ComputeCrc32c(nullptr, 0) != 0) std::abort();
+    if (leancrc32c::ExtendCrc32c(init, nullptr, 0) != init) std::abort();
+    if (leancrc32c::ExtendCrc32cPortable(init, nullptr, 0) != init) std::abort();
+    if (leancrc32c::MemcpyCrc32c(nullptr, nullptr, 0, init) != init) std::abort();
+    if (leancrc32c::MemcpyCrc32cPortable(nullptr, nullptr, 0, init) != init) std::abort();
+    if (init == 0 && leancrc32c::ComputeCrc32c(nullptr, 0) != 0) std::abort();
     return;
   }
 
   const uint32_t want = static_cast<uint32_t>(
       absl::ExtendCrc32c(absl::crc32c_t{init}, {reinterpret_cast<const char*>(src), n}));
 
-  if (leanmemcpy::ExtendCrc32c(init, src, n) != want) std::abort();
-  if (leanmemcpy::ExtendCrc32cPortable(init, src, n) != want) std::abort();
-  if (init == 0 && leanmemcpy::ComputeCrc32c(src, n) != want) std::abort();
+  if (leancrc32c::ExtendCrc32c(init, src, n) != want) std::abort();
+  if (leancrc32c::ExtendCrc32cPortable(init, src, n) != want) std::abort();
+  if (init == 0 && leancrc32c::ComputeCrc32c(src, n) != want) std::abort();
 
   const size_t d_alloc = d_off + n + trail;
   uint8_t* dbuf = static_cast<uint8_t*>(std::malloc(d_alloc));
@@ -72,8 +72,8 @@ void CheckAllPaths(uint32_t init, const uint8_t* src, size_t n, size_t d_off,
 
   for (int path = 0; path < 2; ++path) {
     if (d_alloc != 0) std::memset(dbuf, 0xA5, d_alloc);
-    const uint32_t got = path == 0 ? leanmemcpy::MemcpyCrc32c(dst, src, n, init)
-                                   : leanmemcpy::MemcpyCrc32cPortable(dst, src, n, init);
+    const uint32_t got = path == 0 ? leancrc32c::MemcpyCrc32c(dst, src, n, init)
+                                   : leancrc32c::MemcpyCrc32cPortable(dst, src, n, init);
     if (got != want) std::abort();
     if (n != 0 && std::memcmp(dst, src, n) != 0) std::abort();
     for (size_t i = 0; i < d_off; ++i) {
@@ -90,7 +90,7 @@ void CheckAllPaths(uint32_t init, const uint8_t* src, size_t n, size_t d_off,
 }  // namespace
 
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
-  (void)leanmemcpy::HardwareAvailable();
+  (void)leancrc32c::HardwareAvailable();
 
   if (size == 0) {
     CheckAllPaths(0, nullptr, 0, 0, 0, true);

@@ -3,15 +3,15 @@ Exact AArch64 (A64) Mach-O machine-code and relocation specification for all 7
 reachable hardware CRC32C functions compiled from `MemcpyCrc32c.Impl.Hw` and
 `MemcpyCrc32c.Impl.HwCombine` (`1,137` 32-bit instruction words total):
 
-1. `_lp_leanmemcpy_Crc32c_combine3` (`44` insns)
-2. `_lp_leanmemcpy_Crc32c_combine6` (`65` insns)
-3. `_lp_leanmemcpy_Crc32c_hwLoop___redArg` (`99` insns)
-4. `_lp_leanmemcpy_Crc32c_hwFold6Loop___redArg` (`197` insns)
-5. `_lp_leanmemcpy_Crc32c_hwFold6___redArg` (`186` insns)
-6. `_lp_leanmemcpy_Crc32c_rawExtendHwMulti___redArg` (`119` insns)
-7. `_lp_leanmemcpy_Crc32c_extendHwRaw___redArg` (`427` insns)
+1. `_lp_leancrc32c_Crc32c_combine3` (`44` insns)
+2. `_lp_leancrc32c_Crc32c_combine6` (`65` insns)
+3. `_lp_leancrc32c_Crc32c_hwLoop___redArg` (`99` insns)
+4. `_lp_leancrc32c_Crc32c_hwFold6Loop___redArg` (`197` insns)
+5. `_lp_leancrc32c_Crc32c_hwFold6___redArg` (`186` insns)
+6. `_lp_leancrc32c_Crc32c_rawExtendHwMulti___redArg` (`119` insns)
+7. `_lp_leancrc32c_Crc32c_extendHwRaw___redArg` (`427` insns)
 
-Verified byte-for-byte against `Hw.c.o`, `HwCombine.c.o`, `libleanmemcpy.a`, and
+Verified byte-for-byte against `Hw.c.o`, `HwCombine.c.o`, `libleancrc32c.a`, and
 the linked `test_c_abi` executable by `scripts/check_aarch64_mc.py`.
 -/
 import SimdModels.Arm64Lemmas

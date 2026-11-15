@@ -11,7 +11,7 @@ or for the C++ wrapper and dispatch.
 Headline, `MemcpyCrc32c/Arm64/ExtendHwRaw.lean`:
 
 `extendHwRaw_mc_spec`. Take any machine state whose program counter is at the
-entry of `_lp_leanmemcpy_Crc32c_extendHwRaw___redArg`, with the seven
+entry of `_lp_leancrc32c_Crc32c_extendHwRaw___redArg`, with the seven
 functions and their constants loaded, a read-only payload `a` at
 `objPtr + 0x18`, 0x160 bytes of writable stack below `SP`, `W0 = c`,
 `X1 = objPtr`, `X2 = len` and `len ≤ a.size`. Then the model runs to the

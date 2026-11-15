@@ -9,7 +9,7 @@
 #include <random>
 
 #include "absl/crc/crc32c.h"
-#include "leanmemcpy.h"
+#include "leancrc32c.h"
 
 int main(int argc, char** argv) {
   long iters = argc > 1 ? std::atol(argv[1]) : 200000;
@@ -17,10 +17,10 @@ int main(int argc, char** argv) {
   std::mt19937_64 rng(seed);
 
   // Explicit null + zero-length checks.
-  if (leanmemcpy::ExtendCrc32c(0xDEADBEEFu, nullptr, 0) != 0xDEADBEEFu ||
-      leanmemcpy::ExtendCrc32cPortable(0xDEADBEEFu, nullptr, 0) != 0xDEADBEEFu ||
-      leanmemcpy::MemcpyCrc32c(nullptr, nullptr, 0, 0xDEADBEEFu) != 0xDEADBEEFu ||
-      leanmemcpy::MemcpyCrc32cPortable(nullptr, nullptr, 0, 0xDEADBEEFu) != 0xDEADBEEFu) {
+  if (leancrc32c::ExtendCrc32c(0xDEADBEEFu, nullptr, 0) != 0xDEADBEEFu ||
+      leancrc32c::ExtendCrc32cPortable(0xDEADBEEFu, nullptr, 0) != 0xDEADBEEFu ||
+      leancrc32c::MemcpyCrc32c(nullptr, nullptr, 0, 0xDEADBEEFu) != 0xDEADBEEFu ||
+      leancrc32c::MemcpyCrc32cPortable(nullptr, nullptr, 0, 0xDEADBEEFu) != 0xDEADBEEFu) {
     std::fprintf(stderr, "MISMATCH nullptr count=0\n");
     return 1;
   }
@@ -60,14 +60,14 @@ int main(int argc, char** argv) {
     uint32_t init = (it % 3 == 0) ? 0 : static_cast<uint32_t>(rng());
     absl::string_view sv(reinterpret_cast<const char*>(src), n);
     uint32_t want = static_cast<uint32_t>(absl::ExtendCrc32c(absl::crc32c_t{init}, sv));
-    uint32_t e1 = leanmemcpy::ExtendCrc32c(init, src, n);
-    uint32_t e2 = leanmemcpy::ExtendCrc32cPortable(init, src, n);
-    uint32_t m1 = leanmemcpy::MemcpyCrc32c(dst, src, n, init);
+    uint32_t e1 = leancrc32c::ExtendCrc32c(init, src, n);
+    uint32_t e2 = leancrc32c::ExtendCrc32cPortable(init, src, n);
+    uint32_t m1 = leancrc32c::MemcpyCrc32c(dst, src, n, init);
     bool copy_ok = (n == 0 || std::memcmp(dst, src, n) == 0) &&
                    (trail == 0 || dbuf[d_o + n] == 0x5a);
     for (size_t i = 0; i < d_o; ++i) copy_ok = copy_ok && dbuf[i] == 0x5a;
     std::memset(dbuf, 0x5a, d_alloc);
-    uint32_t m2 = leanmemcpy::MemcpyCrc32cPortable(dst, src, n, init);
+    uint32_t m2 = leancrc32c::MemcpyCrc32cPortable(dst, src, n, init);
     copy_ok = copy_ok && (n == 0 || std::memcmp(dst, src, n) == 0) &&
               (trail == 0 || dbuf[d_o + n] == 0x5a);
     for (size_t i = 0; i < d_o; ++i) copy_ok = copy_ok && dbuf[i] == 0x5a;
@@ -81,6 +81,6 @@ int main(int argc, char** argv) {
     ++checked;
   }
   std::printf("OK: %ld cases agree with abseil (hardware path available: %d)\n", checked,
-              leanmemcpy::HardwareAvailable());
+              leancrc32c::HardwareAvailable());
   return 0;
 }

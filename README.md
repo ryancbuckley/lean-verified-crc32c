@@ -1,8 +1,8 @@
 # lean-verified-crc32c
 
-`lean-verified-crc32c` is a formally verified implementation of CRC32C (`ExtendCrc32c`, `ComputeCrc32c`, and the CRC algebra operations `Concat`, `RemovePrefix`, `RemoveSuffix`, `ExtendByZeroes`) and fused memory-copy-with-CRC32C (`MemcpyCrc32c`) written in **Lean 4** (`v4.35.0`), with a zero-allocation **C11 / C++17** static library (`cxx/leanmemcpy.h`) that mirrors Abseil's CRC32C API. The library still links against Lean's runtime shared libraries (`libleanshared`, `libInit_shared`; see `build/cxx/LINK_FLAGS`) for one-time module initialization.
+`lean-verified-crc32c` is a formally verified implementation of CRC32C (`ExtendCrc32c`, `ComputeCrc32c`, and the CRC algebra operations `Concat`, `RemovePrefix`, `RemoveSuffix`, `ExtendByZeroes`) and fused memory-copy-with-CRC32C (`MemcpyCrc32c`) written in **Lean 4** (`v4.35.0`), with a zero-allocation **C11 / C++17** static library (`cxx/leancrc32c.h`) that mirrors Abseil's CRC32C API. The library still links against Lean's runtime shared libraries (`libleanshared`, `libInit_shared`; see `build/cxx/LINK_FLAGS`) for one-time module initialization.
 
-**Naming.** This project was originally called `leanmemcpy`, and the code still uses that name: the Lake package, `cxx/leanmemcpy.h` / `.cc`, `libleanmemcpy.a`, and the compiled Lean symbols (`_lp_leanmemcpy_...`) that the machine-code proofs refer to.
+**Naming.** In code, the project is called `leancrc32c`: the Lake package, `cxx/leancrc32c.h` / `.cc`, `libleancrc32c.a`, the C functions (`leancrc32c_extend_crc32c`, …), the C++ namespace (`leancrc32c::`), and the compiled Lean symbols (`_lp_leancrc32c_...`). It was originally called `leanmemcpy`.
 
 **Platform status.** Everything here was built, tuned, tested and benchmarked on one machine: an Apple M4 running macOS. x86-64 has only been exercised under Rosetta 2, and no other AArch64 core or operating system has been tried. Read every performance number below as an M4 number.
 
@@ -39,7 +39,7 @@ Every CRC path—from a pure-register portable fallback to a 6-stream hardware `
 
 ### 4. Dispatched Copy-and-CRC, C11/C++17 ABI & Fuzzing (`cxx/`, `MemcpyCrc32c/CApi.lean`)
 - **Headline Lean theorem (`memcpyCrc32c_spec`).** Regardless of what the `opaque` CPU capability probe returns at runtime, `memcpyCrc32c` returns `(src.copySlice sOff dst dOff n, Spec.extend init (src.extract sOff (sOff + n)))`.
-- **C11 & C++17 static library (`libleanmemcpy.a`).** Built with `-fno-exceptions -fno-rtti` (links cleanly into pure `-std=c11` binaries without `-lc++`), synchronizing one-time Lean runtime startup behind a single acquire byte load on subsequent calls.
+- **C11 & C++17 static library (`libleancrc32c.a`).** Built with `-fno-exceptions -fno-rtti` (links cleanly into pure `-std=c11` binaries without `-lc++`), synchronizing one-time Lean runtime startup behind a single acquire byte load on subsequent calls.
 - **Memory-safety & sanitizer hardening:**
   - Static C-IR call-graph audit (`scripts/check_capi.sh`) verifying all 22 reachable generated C functions perform zero allocations, zero reference-count operations, and zero Lean object-header reads (`m_tag` / `m_size`).
   - `9,051` `PROT_NONE` guard-page boundary tests at alignments `0..7` (both with and without `-DNDEBUG`).
@@ -69,10 +69,10 @@ How to read this table:
 For CRC-only (`ExtendCrc32c`), the out-of-line verified Lean function runs at **6.30 GB/s (`2.54 ns`)** at 16 B (`0.90×` Abseil's header-inlined fast path—within ~1 clock cycle across a C ABI call) and **56.1 GB/s** at 1 MiB (`0.90×` `absl::ExtendCrc32c`).
 
 ### 6. AArch64 Binary Machine-Code Verification (`MemcpyCrc32c/Arm64/`)
-For the Apple M4 build, all **7 functions (`1,137` 32-bit instruction words)** reachable from `_lp_leanmemcpy_Crc32c_extendHwRaw___redArg` (`combine3`, `combine6`, `hwLoop`, `hwFold6Loop`, `hwFold6`, `rawExtendHwMulti`, `extendHwRaw`) are verified at the binary instruction level against `SimdModels/Arm64.lean`:
+For the Apple M4 build, all **7 functions (`1,137` 32-bit instruction words)** reachable from `_lp_leancrc32c_Crc32c_extendHwRaw___redArg` (`combine3`, `combine6`, `hwLoop`, `hwFold6Loop`, `hwFold6`, `rawExtendHwMulti`, `extendHwRaw`) are verified at the binary instruction level against `SimdModels/Arm64.lean`:
 - **End-to-end theorem (`extendHwRaw_mc_spec`).** From any machine state entering `extendHwRaw___redArg` with code and constants loaded, read-only payload `a` at `objPtr + 0x18`, and `0x160` writable stack bytes below `SP`, execution terminates at `X30` with `W0 = Crc32c.Spec.extend c (a.extract 0 len)`, AAPCS64 callee-saved registers (`SP`, `X19..X30`, `D8..D15`) preserved, and all memory outside `[SP - 0x160, SP)` unchanged. The theorem assumes only the payload, the constants and the stack are mapped, and the model faults on any access to an unmapped byte, so the code provably never reads the 24 bytes `[objPtr, objPtr + 0x18)` in front of a borrowed pointer or anything past the payload. For `len < 96` (`extendHwRaw_short_mc_spec`), `0` stack bytes are required and memory is completely unchanged.
 - **Which binary.** The proofs are about the objects produced by `cxx/build.sh` (system `clang -O2` on the Lean-generated C), not the executables `lake` links with Lean's bundled clang. They cover the hardware CRC path only: not the portable path, the dispatch, the copy, or the C++ wrapper.
-- **Binary & ISA validation.** `SimdModels/Arm64.lean` is checked against ASLp across `3,017` full-state vectors covering `996` distinct instruction words (including all `873` distinct words in the 7 functions), and `scripts/check_aarch64_mc.sh` checks byte-for-byte agreement between `Arm64/Code.lean` and the `.o` objects, `libleanmemcpy.a`, and linked Mach-O binary (including 7 branch relocations and 20 GOT pairs with Apple `ld` `adrp+ldr -> adrp+add` relaxation).
+- **Binary & ISA validation.** `SimdModels/Arm64.lean` is checked against ASLp across `3,017` full-state vectors covering `996` distinct instruction words (including all `873` distinct words in the 7 functions), and `scripts/check_aarch64_mc.sh` checks byte-for-byte agreement between `Arm64/Code.lean` and the `.o` objects, `libleancrc32c.a`, and linked Mach-O binary (including 7 branch relocations and 20 GOT pairs with Apple `ld` `adrp+ldr -> adrp+add` relaxation).
 
 ---
 
@@ -82,10 +82,10 @@ For the Apple M4 build, all **7 functions (`1,137` 32-bit instruction words)** r
 
 - **Source-level theorems (`MemcpyCrc32c/Axioms.lean`, 60 theorems):**
   1. Lean 4.35.0's kernel and Mathlib's polynomial definitions (`[propext, Classical.choice, Quot.sound]`).
-  2. For native execution: Lean's C codegen, Clang, and the 9 `@[extern]` bindings in `SimdModels/Trusted.lean` (`crc32c_u8/16/32/64`, `clmulLo/Hi`, `loadU8`, `loadU64LE`, `cpuHasCrcClmul`), plus the ~295-line C++ wrapper `cxx/leanmemcpy.cc`.
+  2. For native execution: Lean's C codegen, Clang, and the 9 `@[extern]` bindings in `SimdModels/Trusted.lean` (`crc32c_u8/16/32/64`, `clmulLo/Hi`, `loadU8`, `loadU64LE`, `cpuHasCrcClmul`), plus the ~295-line C++ wrapper `cxx/leancrc32c.cc`.
 - **AArch64 machine-code theorems (`MemcpyCrc32c/Arm64.lean`, hardware CRC call graph on this binary):**
   - **Removed from TCB:** Lean's compiler (`leanc`), `clang -O2`, and all C-shim instruction/load bindings (`crc32c_*`, `clmul*`, `loadU8`, `loadU64LE`).
-  - **Remaining in TCB:** Lean's kernel, the A64 operational model (`SimdModels/Arm64.lean`, validated by testing against Arm's ASL, not proven: two random states per compiled instruction word plus edge-case families), the Mach-O byte-audit script (`scripts/check_aarch64_mc.py`), the loader/module-init assumption (`CodeLoaded` / `GlobalsLoaded`: the constants are written at run time by Lean's unverified module initializer, and no Lean term shows the assumptions are satisfiable for a concrete memory image), and the outer C++ wrapper (`cxx/leanmemcpy.cc`: dispatch, copy, and entry register contract).
+  - **Remaining in TCB:** Lean's kernel, the A64 operational model (`SimdModels/Arm64.lean`, validated by testing against Arm's ASL, not proven: two random states per compiled instruction word plus edge-case families), the Mach-O byte-audit script (`scripts/check_aarch64_mc.py`), the loader/module-init assumption (`CodeLoaded` / `GlobalsLoaded`: the constants are written at run time by Lean's unverified module initializer, and no Lean term shows the assumptions are satisfiable for a concrete memory image), and the outer C++ wrapper (`cxx/leancrc32c.cc`: dispatch, copy, and entry register contract).
 
 ---
 
@@ -179,7 +179,7 @@ lean-simd-models/
   SimdModels/                 # V128 & scalar CRC/CLMUL models, GF(2)[X] specs, Intel SDM & A64 ISA
   c/simd_shim.h               # Target-guarded C intrinsics & alignment-safe byte/word loads
   tests/, validation/         # ASLp vectors, hardware differential tests & Rosetta cross-check
-cxx/                          # C11/C++17 static library (leanmemcpy.h/.cc), tests & libFuzzer
+cxx/                          # C11/C++17 static library (leancrc32c.h/.cc), tests & libFuzzer
 bench/                        # Full CMake-Abseil benchmark suite & C prototypes
 scripts/                      # TCB scanner, C-IR call-graph audit, Mach-O binary byte checker
 reports/                      # Detailed development notes & raw Apple M4 benchmark CSVs
@@ -196,7 +196,7 @@ lake build
 # 2. Verify zero unauthorized externs, axioms, sorry, or bv_decide across all .lean files
 ./scripts/check_trusted.sh
 
-# 3. Build C11/C++17 static library (build/cxx/libleanmemcpy.a) and run C-IR & guard-page audits
+# 3. Build C11/C++17 static library (build/cxx/libleancrc32c.a) and run C-IR & guard-page audits
 ./cxx/build.sh
 ./scripts/check_capi.sh
 

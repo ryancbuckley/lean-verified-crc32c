@@ -5,7 +5,7 @@ Mach-O 64-bit AArch64 binary audit for Phase 7 (`MemcpyCrc32c/Arm64/Code.lean`).
 Verifies byte-for-byte and relocation-for-relocation equality between the
 machine-code specification in `MemcpyCrc32c/Arm64/Code.lean` and:
   1. Compiled Mach-O object files (`HwCombine.c.o`, `Hw.c.o`),
-  2. Static library archive members (`build/cxx/libleanmemcpy.a`), and
+  2. Static library archive members (`build/cxx/libleancrc32c.a`), and
   3. Linked Mach-O executable (`build/cxx/test_c_abi`), checking that every
      unrelocated 32-bit word is identical, every `ARM64_RELOC_BRANCH26` (`bl`/`b`)
      targets the exact linked callee virtual address, and every
@@ -38,34 +38,34 @@ ARM64_RELOC_GOT_LOAD_PAGEOFF12 = 6
 MASK64 = (1 << 64) - 1
 
 FUNCTIONS = [
-    ("combine3", "HwCombine.c.o", "_lp_leanmemcpy_Crc32c_combine3"),
-    ("combine6", "HwCombine.c.o", "_lp_leanmemcpy_Crc32c_combine6"),
-    ("hwLoop", "Hw.c.o", "_lp_leanmemcpy_Crc32c_hwLoop___redArg"),
-    ("hwFold6Loop", "Hw.c.o", "_lp_leanmemcpy_Crc32c_hwFold6Loop___redArg"),
-    ("hwFold6", "Hw.c.o", "_lp_leanmemcpy_Crc32c_hwFold6___redArg"),
-    ("rawExtendHwMulti", "Hw.c.o", "_lp_leanmemcpy_Crc32c_rawExtendHwMulti___redArg"),
-    ("extendHwRaw", "Hw.c.o", "_lp_leanmemcpy_Crc32c_extendHwRaw___redArg"),
+    ("combine3", "HwCombine.c.o", "_lp_leancrc32c_Crc32c_combine3"),
+    ("combine6", "HwCombine.c.o", "_lp_leancrc32c_Crc32c_combine6"),
+    ("hwLoop", "Hw.c.o", "_lp_leancrc32c_Crc32c_hwLoop___redArg"),
+    ("hwFold6Loop", "Hw.c.o", "_lp_leancrc32c_Crc32c_hwFold6Loop___redArg"),
+    ("hwFold6", "Hw.c.o", "_lp_leancrc32c_Crc32c_hwFold6___redArg"),
+    ("rawExtendHwMulti", "Hw.c.o", "_lp_leancrc32c_Crc32c_rawExtendHwMulti___redArg"),
+    ("extendHwRaw", "Hw.c.o", "_lp_leancrc32c_Crc32c_extendHwRaw___redArg"),
 ]
 
 SYM_TO_ID = {
-    "_lp_leanmemcpy_Crc32c_combine3": "fnCombine3",
-    "_lp_leanmemcpy_Crc32c_combine6": "fnCombine6",
-    "_lp_leanmemcpy_Crc32c_hwLoop___redArg": "fnHwLoop",
-    "_lp_leanmemcpy_Crc32c_hwFold6Loop___redArg": "fnHwFold6Loop",
-    "_lp_leanmemcpy_Crc32c_hwFold6___redArg": "fnHwFold6",
-    "_lp_leanmemcpy_Crc32c_rawExtendHwMulti___redArg": "fnRawExtendHwMulti",
-    "_lp_leanmemcpy_Crc32c_extendHwRaw___redArg": "fnExtendHwRaw",
-    "_lp_leanmemcpy_Crc32c_hwOne": "gHwOne",
-    "_lp_leanmemcpy_Crc32c_hwX64": "gHwX64",
-    "_lp_leanmemcpy_Crc32c_hwShiftSmallBytes": "gHwShiftSmallBytes",
-    "_lp_leanmemcpy_Crc32c_kFold128__1": "gKFold128_1",
-    "_lp_leanmemcpy_Crc32c_kFold128__2": "gKFold128_2",
-    "_lp_leanmemcpy_Crc32c_kFold256__1": "gKFold256_1",
-    "_lp_leanmemcpy_Crc32c_kFold256__2": "gKFold256_2",
-    "_lp_leanmemcpy_Crc32c_kFold384__1": "gKFold384_1",
-    "_lp_leanmemcpy_Crc32c_kFold384__2": "gKFold384_2",
-    "_lp_leanmemcpy_Crc32c_kFold512__1": "gKFold512_1",
-    "_lp_leanmemcpy_Crc32c_kFold512__2": "gKFold512_2",
+    "_lp_leancrc32c_Crc32c_combine3": "fnCombine3",
+    "_lp_leancrc32c_Crc32c_combine6": "fnCombine6",
+    "_lp_leancrc32c_Crc32c_hwLoop___redArg": "fnHwLoop",
+    "_lp_leancrc32c_Crc32c_hwFold6Loop___redArg": "fnHwFold6Loop",
+    "_lp_leancrc32c_Crc32c_hwFold6___redArg": "fnHwFold6",
+    "_lp_leancrc32c_Crc32c_rawExtendHwMulti___redArg": "fnRawExtendHwMulti",
+    "_lp_leancrc32c_Crc32c_extendHwRaw___redArg": "fnExtendHwRaw",
+    "_lp_leancrc32c_Crc32c_hwOne": "gHwOne",
+    "_lp_leancrc32c_Crc32c_hwX64": "gHwX64",
+    "_lp_leancrc32c_Crc32c_hwShiftSmallBytes": "gHwShiftSmallBytes",
+    "_lp_leancrc32c_Crc32c_kFold128__1": "gKFold128_1",
+    "_lp_leancrc32c_Crc32c_kFold128__2": "gKFold128_2",
+    "_lp_leancrc32c_Crc32c_kFold256__1": "gKFold256_1",
+    "_lp_leancrc32c_Crc32c_kFold256__2": "gKFold256_2",
+    "_lp_leancrc32c_Crc32c_kFold384__1": "gKFold384_1",
+    "_lp_leancrc32c_Crc32c_kFold384__2": "gKFold384_2",
+    "_lp_leancrc32c_Crc32c_kFold512__1": "gKFold512_1",
+    "_lp_leancrc32c_Crc32c_kFold512__2": "gKFold512_2",
 }
 ID_TO_SYM = {v: k for k, v in SYM_TO_ID.items()}
 
@@ -495,17 +495,17 @@ def main() -> int:
             )
         total_words += len(exp["words"])
 
-    # 2. Verify against libleanmemcpy.a archive members
-    ar_members = extract_ar_members(build_dir / "libleanmemcpy.a")
+    # 2. Verify against libleancrc32c.a archive members
+    ar_members = extract_ar_members(build_dir / "libleancrc32c.a")
     ar_map = {
         "HwCombine.c.o": ".lake_build_ir_MemcpyCrc32c_Impl_HwCombine.c.o",
         "Hw.c.o": ".lake_build_ir_MemcpyCrc32c_Impl_Hw.c.o",
     }
     for obj_key, member_name in ar_map.items():
         if member_name not in ar_members:
-            raise ValueError(f"libleanmemcpy.a: missing member {member_name}")
+            raise ValueError(f"libleancrc32c.a: missing member {member_name}")
         if ar_members[member_name] != objs[obj_key].data:
-            raise ValueError(f"libleanmemcpy.a: {member_name} differs from {obj_key}")
+            raise ValueError(f"libleancrc32c.a: {member_name} differs from {obj_key}")
 
     # 3. Verify against linked test_c_abi executable
     exe = MachO64((build_dir / "test_c_abi").read_bytes(), "test_c_abi")
@@ -514,7 +514,7 @@ def main() -> int:
     print(
         f"OK: AArch64 Mach-O machine-code audit ({len(FUNCTIONS)} functions, "
         f"{total_words} instructions, {n_br} BRANCH26 relocations, {n_got} GOT_LOAD pairs "
-        f"verified across .o, libleanmemcpy.a, and test_c_abi)"
+        f"verified across .o, libleancrc32c.a, and test_c_abi)"
     )
     return 0
 

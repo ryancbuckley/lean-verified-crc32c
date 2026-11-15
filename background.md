@@ -1,6 +1,6 @@
 # Background: Fast CRCs and How We Prove Them Correct
 
-This document explains the core ideas behind `leanmemcpy` in plain terms—no background in coding theory, SIMD assembly, or theorem provers assumed. Once you have the mental models below, [README.md](README.md) and the source files should be straightforward to follow.
+This document explains the core ideas behind `lean-verified-crc32c` in plain terms—no background in coding theory, SIMD assembly, or theorem provers assumed. Once you have the mental models below, [README.md](README.md) and the source files should be straightforward to follow.
 
 ---
 
@@ -45,7 +45,7 @@ Every single optimization in fast CRC code comes from this one equation: you can
 
 The textbook CRC loop shifts a 32-bit register by one bit, checks the outgoing bit, and conditionally XORs in $G(X)$. It is tiny and obviously faithful to the definition, but horribly slow: every bit must wait for the previous bit's result.
 
-`leanmemcpy` uses three progressively wider techniques—all proven to compute the exact same remainder modulo $G(X)$:
+`lean-verified-crc32c` uses three progressively wider techniques—all proven to compute the exact same remainder modulo $G(X)$:
 
 ### Lookup Tables (*Slicing-by-8*)
 Instead of stepping 1 bit at a time, precompute a small table (`8 × 256` entries = 8 KiB) storing the 32-bit remainders of every possible byte value at 8 consecutive byte positions. Processing an 8-byte word becomes 8 table lookups XORed together. This has zero startup math, making it ideal for very short buffers on CPUs without CRC instructions.
@@ -96,7 +96,7 @@ Proves that the Lean programs equal `Spec.lean`.
   1. **Lean's kernel** and the 44-line `Spec.lean` definition.
   2. **Compilers:** Lean's C code generator and the C compiler (`clang`) that compile the Lean code.
   3. **Hardware instruction bindings (`lean-simd-models/`):** Lean cannot see inside silicon, so hardware instructions (`CRC32C`, `CLMUL`) and raw unaligned loads are modeled as pure Lean bit-vector functions wired to tiny inline C intrinsics. To make sure those models match reality, we cross-check them against **Arm's official machine-readable Architecture Specification Language (ASL)** (executed via the **ASLp** interpreter), against Intel's manual pseudocode, and across millions of randomized runs on real hardware.
-  4. **The thin C/C++ wrapper (`cxx/leanmemcpy.cc`):** Borrows raw C caller pointers without copying or allocating, copies `src` to `dest`, and calls into Lean. Because C pointer rules around alignment and object headers are subtle, this boundary is checked with static C call-graph audits, hardware `PROT_NONE` guard pages, and `100M+` sanitizer-instrumented fuzz runs.
+  4. **The thin C/C++ wrapper (`cxx/leancrc32c.cc`):** Borrows raw C caller pointers without copying or allocating, copies `src` to `dest`, and calls into Lean. Because C pointer rules around alignment and object headers are subtle, this boundary is checked with static C call-graph audits, hardware `PROT_NONE` guard pages, and `100M+` sanitizer-instrumented fuzz runs.
 
 ### Layer B: Binary Machine-Code Verification (`MemcpyCrc32c/Arm64/`)
 Even with source-level proofs, a bug in Lean's compiler, `clang -O2`, or our inline C intrinsics could emit buggy assembly.

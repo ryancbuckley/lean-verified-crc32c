@@ -1,5 +1,5 @@
 #!/bin/bash
-# Builds build/cxx/libleanmemcpy.a from the Lean-generated C modules plus the
+# Builds build/cxx/libleancrc32c.a from the Lean-generated C modules plus the
 # C/C++ wrapper. Compiles the generated C directly so c/simd_shim.h changes are
 # always picked up and x86-64 hardware kernel TUs receive -msse4.2 -mpclmul (so
 # the CRC32 and PCLMULQDQ intrinsics inline into the kernel loops without
@@ -43,9 +43,9 @@ for m in Models Trusted; do
 done
 
 "$CXX" -std=c++17 -O3 -fno-exceptions -fno-rtti $CFLAGS_EXTRA -I"$PREFIX/include" -Icxx \
-  -c cxx/leanmemcpy.cc -o "$OUT/leanmemcpy.o" \
+  -c cxx/leancrc32c.cc -o "$OUT/leancrc32c.o" \
   2> >(grep -v "newer 'macOS'" >&2 || true)
-rm -f "$OUT/libleanmemcpy.a"
-ar rcs "$OUT/libleanmemcpy.a" "$OUT/leanmemcpy.o" "${OBJS[@]}"
-echo "$PWD/$OUT/libleanmemcpy.a -L$PREFIX/lib/lean -lleanshared -lInit_shared -Wl,-rpath,$PREFIX/lib/lean" > "$OUT/LINK_FLAGS"
-echo "built $OUT/libleanmemcpy.a"
+rm -f "$OUT/libleancrc32c.a"
+ar rcs "$OUT/libleancrc32c.a" "$OUT/leancrc32c.o" "${OBJS[@]}"
+echo "$PWD/$OUT/libleancrc32c.a -L$PREFIX/lib/lean -lleanshared -lInit_shared -Wl,-rpath,$PREFIX/lib/lean" > "$OUT/LINK_FLAGS"
+echo "built $OUT/libleancrc32c.a"

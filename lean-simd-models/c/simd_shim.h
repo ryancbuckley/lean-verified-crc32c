@@ -161,7 +161,7 @@ static inline uint8_t simdmodels_cpu_has_crc_clmul(void) {
 #define SIMDMODELS_CLMUL_HI(a, b)   simdmodels_clmul_hi((a), (b))
 /* Raw byte pointer into a ByteArray's payload without forming or dereferencing
  * a `lean_sarray_object *` (which asserts on `m_header` / `m_size` when !NDEBUG
- * and requires 8-byte alignment in C/UBSan when `cxx/leanmemcpy.cc` passes a
+ * and requires 8-byte alignment in C/UBSan when `cxx/leancrc32c.cc` passes a
  * headerless borrowed pointer `p - offsetof(lean_sarray_object, m_data)` for an
  * arbitrarily aligned caller pointer `p`). Unsigned `uintptr_t` arithmetic
  * recovers `p` exactly without pointer-overflow or alignment UB. */

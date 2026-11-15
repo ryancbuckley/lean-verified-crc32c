@@ -18,14 +18,14 @@
 #include <vector>
 
 #include "absl/crc/crc32c.h"
-#include "leanmemcpy.h"
+#include "leancrc32c.h"
 
 int main() {
   // Null pointer + zero count must never dereference or fault.
-  if (leanmemcpy::ExtendCrc32c(0x13579BDFu, nullptr, 0) != 0x13579BDFu ||
-      leanmemcpy::ExtendCrc32cPortable(0x13579BDFu, nullptr, 0) != 0x13579BDFu ||
-      leanmemcpy::MemcpyCrc32c(nullptr, nullptr, 0, 0x2468ACE0u) != 0x2468ACE0u ||
-      leanmemcpy::MemcpyCrc32cPortable(nullptr, nullptr, 0, 0x2468ACE0u) != 0x2468ACE0u) {
+  if (leancrc32c::ExtendCrc32c(0x13579BDFu, nullptr, 0) != 0x13579BDFu ||
+      leancrc32c::ExtendCrc32cPortable(0x13579BDFu, nullptr, 0) != 0x13579BDFu ||
+      leancrc32c::MemcpyCrc32c(nullptr, nullptr, 0, 0x2468ACE0u) != 0x2468ACE0u ||
+      leancrc32c::MemcpyCrc32cPortable(nullptr, nullptr, 0, 0x2468ACE0u) != 0x2468ACE0u) {
     std::fprintf(stderr, "MISMATCH nullptr count=0\n");
     return 1;
   }
@@ -67,12 +67,12 @@ int main() {
       uint32_t init = static_cast<uint32_t>(n * 2654435761u);
       uint32_t want = static_cast<uint32_t>(
           absl::ExtendCrc32c(absl::crc32c_t{init}, {reinterpret_cast<const char*>(p), n}));
-      uint32_t a = leanmemcpy::ExtendCrc32c(init, p, n);
-      uint32_t b = leanmemcpy::ExtendCrc32cPortable(init, p, n);
+      uint32_t a = leancrc32c::ExtendCrc32c(init, p, n);
+      uint32_t b = leancrc32c::ExtendCrc32cPortable(init, p, n);
       unsigned char* d = dst.data() + (n & 7);
-      uint32_t c = leanmemcpy::MemcpyCrc32c(d, p, n, init);
+      uint32_t c = leancrc32c::MemcpyCrc32c(d, p, n, init);
       bool ok = (a == want && b == want && c == want && std::memcmp(d, p, n) == 0);
-      uint32_t cp = leanmemcpy::MemcpyCrc32cPortable(d, p, n, init);
+      uint32_t cp = leancrc32c::MemcpyCrc32cPortable(d, p, n, init);
       ok = ok && (cp == want && std::memcmp(d, p, n) == 0);
       if (!ok) {
         std::fprintf(stderr, "MISMATCH n=%zu\n", n);
@@ -82,6 +82,6 @@ int main() {
     }
   }
   std::printf("OK: %ld guarded buffers, no fault, all agree with abseil (hardware path available: %d)\n",
-              checked, leanmemcpy::HardwareAvailable());
+              checked, leancrc32c::HardwareAvailable());
   return 0;
 }

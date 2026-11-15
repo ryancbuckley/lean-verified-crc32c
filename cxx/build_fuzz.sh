@@ -106,7 +106,7 @@ done
 
 "$LLVM/bin/clang++" -std=c++17 -O2 -fno-exceptions -fno-rtti "${SAN[@]}" \
   -fsanitize=fuzzer-no-link -I"$PREFIX/include" -Icxx \
-  -c cxx/leanmemcpy.cc -o "$OUT/leanmemcpy.o" \
+  -c cxx/leancrc32c.cc -o "$OUT/leancrc32c.o" \
   2> >(grep -v "newer 'macOS'" >&2 || true)
 
 CXX_RUNTIME=()
@@ -116,7 +116,7 @@ fi
 
 "$LLVM/bin/clang++" -std=c++17 -O2 "${SAN[@]}" -fsanitize=fuzzer \
   "${ABSL_CXXFLAGS[@]}" -Icxx \
-  cxx/fuzz.cc "$OUT/leanmemcpy.o" "${OBJS[@]}" "${ABSL_LDFLAGS[@]}" \
+  cxx/fuzz.cc "$OUT/leancrc32c.o" "${OBJS[@]}" "${ABSL_LDFLAGS[@]}" \
   ${CXX_RUNTIME[@]+"${CXX_RUNTIME[@]}"} \
   ${LD_SYSROOT[@]+"${LD_SYSROOT[@]}"} \
   -L"$PREFIX/lib/lean" -lleanshared -lInit_shared -Wl,-rpath,"$PREFIX/lib/lean" \

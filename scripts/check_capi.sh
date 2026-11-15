@@ -62,10 +62,10 @@ for p in c_files:
             i += 1
 
 roots = [
-    "lp_leanmemcpy_Crc32c_extendRaw___redArg",
-    "lp_leanmemcpy_Crc32c_extendHwRaw___redArg",
-    "lp_leanmemcpy_Crc32c_extendPortableRaw___redArg",
-    "lp_leanmemcpy_Crc32c_hwAvailableRaw___redArg",
+    "lp_leancrc32c_Crc32c_extendRaw___redArg",
+    "lp_leancrc32c_Crc32c_extendHwRaw___redArg",
+    "lp_leancrc32c_Crc32c_extendPortableRaw___redArg",
+    "lp_leancrc32c_Crc32c_hwAvailableRaw___redArg",
 ]
 for r in roots:
     if r not in funcs:

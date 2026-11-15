@@ -1,5 +1,5 @@
 /-
-Machine-code verification of `_lp_leanmemcpy_Crc32c_rawExtendHwMulti___redArg`
+Machine-code verification of `_lp_leancrc32c_Crc32c_rawExtendHwMulti___redArg`
 (`119` instructions, `Hw.c.o`) against `Crc32c.rawExtendHwMulti` and
 `Crc32c.rawExtend s_in (Crc32c.bytes a uoff.toNat (uoff.toNat + ulen.toNat))`.
 
@@ -1203,9 +1203,9 @@ private theorem rawExtendHwMulti_path2 {code : UInt64 → Option UInt32} {Layout
     rw [hmid, hcons, hfin, ← Crc32c.rawExtend_append,
       Crc32c.bytes_append a (by omega) (by omega) hsz]
 
-/-! ### Section 6: Public machine-code specification for `_lp_leanmemcpy_Crc32c_rawExtendHwMulti___redArg` -/
+/-! ### Section 6: Public machine-code specification for `_lp_leancrc32c_Crc32c_rawExtendHwMulti___redArg` -/
 
-/-- Full machine-code specification of `_lp_leanmemcpy_Crc32c_rawExtendHwMulti___redArg`
+/-- Full machine-code specification of `_lp_leancrc32c_Crc32c_rawExtendHwMulti___redArg`
 (`119` instructions, `Hw.c.o`):
 from any state `s` at `Layout.rawExtendHwMultiBase` with `.rw` stack `[s.sp - 0x150, s.sp)`
 (`336` bytes total, covering both `rawExtendHwMulti`'s `0x50` frame and `hwFold6`'s `0x100`

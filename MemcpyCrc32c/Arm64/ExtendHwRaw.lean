@@ -1,5 +1,5 @@
 /-
-Machine-code verification of `_lp_leanmemcpy_Crc32c_extendHwRaw___redArg`
+Machine-code verification of `_lp_leancrc32c_Crc32c_extendHwRaw___redArg`
 (`427` instructions, `Hw.c.o`), the entry point of the hardware CRC32C call
 graph, against the frozen Phase 1 specification `Crc32c.Spec.extend`.
 
@@ -188,7 +188,7 @@ theorem extendHwRaw_long_mc_spec {code : UInt64 → Option UInt32} {L : CodeLayo
 
 /-! ### Exported machine-code specification: `extendHwRaw_mc_spec` -/
 
-/-- Machine-code specification of `_lp_leanmemcpy_Crc32c_extendHwRaw___redArg`
+/-- Machine-code specification of `_lp_leancrc32c_Crc32c_extendHwRaw___redArg`
 (`427` instructions) and, through its callees, of the whole hardware CRC32C call
 graph (`7` functions, `1137` instructions).
 
