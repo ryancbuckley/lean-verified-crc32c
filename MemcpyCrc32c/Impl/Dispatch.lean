@@ -26,4 +26,17 @@ def memcpyCrc32c (dst : ByteArray) (dOff : Nat) (src : @& ByteArray) (sOff n : N
   if hwAvailable then memcpyCrc32cHw dst dOff src sOff n init hs hd
   else memcpyCrc32cPortable dst dOff src sOff n init hs hd
 
+/-- `memcpyCrc32c` in continuation-passing style: the new destination and the
+CRC are handed to `k` instead of being returned as a pair. Returning a pair
+allocates on every call, which dominates at small sizes; a caller that
+threads the buffer and the CRC through a loop should use this form. -/
+@[inline] def memcpyCrc32cK {α : Type} (dst : ByteArray) (dOff : Nat) (src : @& ByteArray)
+    (sOff n : Nat) (init : UInt32) (hs : sOff + n ≤ src.size) (_hd : dOff + n ≤ dst.size)
+    (k : ByteArray → UInt32 → α) : α :=
+  if hwAvailable then
+    k (src.copySlice sOff dst dOff n) (rawExtendHw (init ^^^ 0xFFFFFFFF) src sOff n hs ^^^ 0xFFFFFFFF)
+  else
+    k (src.copySlice sOff dst dOff n)
+      (rawExtendPortable (init ^^^ 0xFFFFFFFF) src sOff n hs ^^^ 0xFFFFFFFF)
+
 end Crc32c

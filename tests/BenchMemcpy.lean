@@ -2,7 +2,7 @@
 Quick throughput check of the Lean `memcpyCrc32c` paths. Not the benchmark
 protocol. Compare with bench/absl_quick.cc on the same machine.
 -/
-import MemcpyCrc32c.Impl.Memcpy
+import MemcpyCrc32c.Impl.Dispatch
 
 open Crc32c
 
@@ -33,6 +33,15 @@ def runPortable (reps : Nat) (src : @& ByteArray) (dst : ByteArray) (c : UInt32)
       runPortable k src d c'
     else (dst, c)
 
+/-- As `runHw`, through the dispatched continuation-passing entry point (no pair per call). -/
+def runK (reps : Nat) (src : @& ByteArray) (dst : ByteArray) (c : UInt32) : ByteArray × UInt32 :=
+  match reps with
+  | 0 => (dst, c)
+  | k + 1 =>
+    if h : src.size ≤ dst.size then
+      memcpyCrc32cK dst 0 src 0 src.size c (by omega) (by omega) fun d c' => runK k src d c'
+    else (dst, c)
+
 def main : IO Unit := do
   -- correctness spot check: copy is exact, CRC equals the bitwise reference
   let s := mkBuf 30000
@@ -54,7 +63,7 @@ def main : IO Unit := do
   let warm := mkBuf 65536
   let (_, w) := runHw 6000 warm (ByteArray.mk (Array.replicate 65536 0)) 0
   if w == 0xDEADBEEF then IO.println ""
-  for (name, isHw) in [("memcpyCrc32cHw", true), ("memcpyCrc32cPortable", false)] do
+  for (name, which) in [("memcpyCrc32cK (dispatched)", 2), ("memcpyCrc32cHw (pair)", 1), ("memcpyCrc32cPortable (pair)", 0)] do
     for n in [16, 64, 256, 1024, 4096, 65536, 1048576, 67108864] do
       let src := mkBuf n
       let reps := max 3 (min 200000 (67108864 / n))
@@ -63,7 +72,7 @@ def main : IO Unit := do
       let mut sink : UInt32 := 0
       for _ in [0:9] do
         let t0 ← IO.monoNanosNow
-        let (d, c) := if isHw then runHw reps src dst sink else runPortable reps src dst sink
+        let (d, c) := if which == 2 then runK reps src dst sink else if which == 1 then runHw reps src dst sink else runPortable reps src dst sink
         let t1 ← IO.monoNanosNow
         dst := d; sink := c
         times := times.push (t1 - t0)

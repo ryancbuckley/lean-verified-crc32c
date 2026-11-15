@@ -79,3 +79,4 @@ open Crc32c
 #print axioms extendCrc32c_eq_spec
 #print axioms computeCrc32c_eq_spec
 #print axioms memcpyCrc32c_spec
+#print axioms memcpyCrc32cK_spec

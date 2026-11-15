@@ -33,4 +33,15 @@ theorem memcpyCrc32c_spec (dst : ByteArray) (dOff : Nat) (src : ByteArray) (sOff
   · rw [memcpyCrc32cHw_spec, extend_eq_spec]
   · rw [memcpyCrc32cPortable_spec, extend_eq_spec]
 
+/-- Theorem 6 for the continuation-passing form. -/
+theorem memcpyCrc32cK_spec {α : Type} (dst : ByteArray) (dOff : Nat) (src : ByteArray)
+    (sOff n : Nat) (init : UInt32) (hs : sOff + n ≤ src.size) (hd : dOff + n ≤ dst.size)
+    (k : ByteArray → UInt32 → α) :
+    memcpyCrc32cK dst dOff src sOff n init hs hd k =
+      k (src.copySlice sOff dst dOff n) (Spec.extend init (src.extract sOff (sOff + n))) := by
+  unfold memcpyCrc32cK
+  split
+  · rw [rawExtendHw_eq, ← extend_extract, extend_eq_spec]
+  · rw [rawExtendPortable_eq, ← extend_extract, extend_eq_spec]
+
 end Crc32c
