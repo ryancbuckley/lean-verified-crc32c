@@ -4,6 +4,8 @@
 
 **Platform status.** Everything here was built, tuned, tested and benchmarked on one machine: an Apple M4 running macOS. x86-64 has only been exercised under Rosetta 2, and no other AArch64 core or operating system has been tried. Read every performance number below as an M4 number.
 
+*New to CRCs, polynomial folding, or formal verification in Lean? Start with [background.md](background.md).*
+
 Every CRC path—from a pure-register portable fallback to a 6-stream hardware `CRC32C + CLMUL` kernel—is proven equal in Lean's kernel to a 44-line polynomial specification over $\mathbb{F}_2[X]$ in `MemcpyCrc32c/Spec.lean`, using only Lean's three standard axioms (`propext`, `Classical.choice`, `Quot.sound`) and zero `sorry`, `admit`, `bv_decide`, or `native_decide`. On AArch64 (Apple M4), the compiled machine code of the hardware CRC32C call graph (`7` functions, `1,137` instructions) is additionally verified instruction-by-instruction against an operational A64 ISA model validated against Arm's machine-readable ASL.
 
 ---
