@@ -17,10 +17,10 @@ Every CRC path—from a pure-register portable fallback to a 6-stream hardware `
 ### 1. Polynomial Specification, Generator Algebra & Error Detection (`MemcpyCrc32c/Spec.lean`, `Arith.lean`, `PolyAlgebra.lean`, `ErrorDetection.lean`)
 - **Reference specification.** CRC32C is specified directly as polynomial remainder modulo the Castagnoli generator $G(X)$ in Mathlib's `(ZMod 2)[X]`, matching Abseil's conditioning conventions (`0xFFFFFFFF` XOR on entry and exit of `ExtendCrc32c`).
 - **Verified CRC combinators.** `extend_append`, `concat_spec`, `removePrefix_spec`, `removeSuffix_spec`, and `extendZeroes_spec` are proven for unboxed $O(\log n)$ square-and-multiply arithmetic in $\mathbb{F}_2[X]/(G)$, alongside kernel-evaluated test vectors (`"123456789" -> 0xE3069283` and all five RFC 3720 B.4 iSCSI vectors).
-- **Castagnoli generator structure (`PolyAlgebra.lean`).** $G(X)$ factors into irreducible factors $(X + 1) \cdot P_{31}(X)$ (`G_eq_mul_P31`, `irreducible_X_add_one`, `irreducible_P31`, `squarefree_G`). Using Mathlib's Lucas–Lehmer test for $M_{31} = 2^{31} - 1$, $P_{31}(X)$ is proven primitive and $\pi(X) \in \mathbb{F}_2[X]/(G)$ has exact multiplicative order $2^{31} - 1$ (`orderOf_π_X`), alongside characteristic-2 Frobenius invariance (`dvd_expand_two_pow_iff`: $G(X) \mid p(X^{2^k}) \iff G(X) \mid p(X)$).
+- **Castagnoli generator structure (`PolyAlgebra.lean`).** $G(X)$ factors into irreducible factors $(X + 1) \cdot P_{31}(X)$ (`G_eq_mul_P31`, `irreducible_X_add_one`, `irreducible_P31`, `squarefree_G`). Using Mathlib's Lucas–Lehmer test for $M_{31} = 2^{31} - 1$, $P_{31}(X)$ is proven primitive (`orderOf_root_P31`) and $\pi(X) \in \mathbb{F}_2[X]/(G)$ has exact multiplicative order $2^{31} - 1$ (`orderOf_π_X`), alongside characteristic-2 Frobenius invariance (`dvd_expand_two_pow_iff`: $G(X) \mid p(X^{2^k}) \iff G(X) \mid p(X)$).
 - **End-to-end error detection & Hamming-distance bounds (`ErrorDetection.lean`).** Two same-length messages + CRCs collide iff $G(X)$ divides their codeword error polynomial (`dvd_codewordError_iff`). Combining this with the generator and minimal zero-polynomial theorems yields kernel-checked Castagnoli/Koopman guarantees for `Spec.extend`, `computeCrc32c`, and `memcpyCrc32c`:
   - **All odd-weight bit errors** (`Spec.extend_detects_odd_errors`) and **all $\le 32$-bit / 4-byte burst errors** (`Spec.extend_detects_burst32`, `Spec.extend_ne_of_burst4Bytes`) at arbitrary message lengths.
-  - **Exact Hamming-distance regimes:** **HD = 4** up to `268,435,451` B (`~256 MiB`, `Spec.extend_hd4`), **HD = 6** up to `655` B / `5,243` payload bits covering **512 B storage sectors** (`Spec.extend_hd6`, `memcpyCrc32c_sector_hd6`), **HD = 8** up to `22` B (`Spec.extend_hd8`), and **HD = 10** up to `5` B codeword / `9` B uncorrupted-CRC payload (`Spec.extend_hd10`, `Spec.extend_payload_hd10`).
+  - **Hamming-distance guarantees for whole-byte buffers:** **HD = 4** up to `268,435,451` B (`~256 MiB`, `Spec.extend_hd4`), **HD = 6** up to `655` B (Koopman's bit-level limit is `5,243` payload bits) covering **512 B storage sectors** (`Spec.extend_hd6`, `memcpyCrc32c_sector_hd6`), **HD = 8** up to `22` B (`Spec.extend_hd8`), and **HD = 10** up to `5` B codeword / `9` B uncorrupted-CRC payload (`Spec.extend_hd10`, `Spec.extend_payload_hd10`). The theorems prove detection. The limits match Koopman's published bit lengths and cannot be raised, because the zero polynomials in section 2 fit in the next byte; that converse is not stated as a Lean theorem.
 
 ### 2. Certified Zero Polynomials & Verified Portable Register Kernel (`MemcpyCrc32c/ZeroPoly.lean`, `ZeroPolyMinimal.lean`, `Portable.lean`)
 - **Zero-polynomial (Chorba) reduction for CRC32C.** Because $G(X)$ has 18 terms, $X + 1 \mid G(X)$ and every nonzero multiple of $G$ has positive even weight (`even_card_support_of_dvd_G`), ruling out odd weights (`3, 5, 7, 9`). Across every sparse-multiple regime, both **degree minimality** and **uniqueness** are proven in the Lean kernel:
@@ -86,7 +86,7 @@ For the Apple M4 build, all **7 functions (`1,137` 32-bit instruction words)** r
 
 `scripts/check_trusted.sh` scans every `.lean` file (after stripping comments and string literals) and rejects any `sorry`, `admit`, `axiom`, `unsafe`, `implemented_by`, `csimp`, `native_decide`, or `@[extern]` outside `SimdModels/Trusted.lean`. `bv_decide` is permitted only inside a directory named `BvDecide/` (the agreed quarantine policy); no such directory exists, so none is used.
 
-- **Source-level theorems (`MemcpyCrc32c/Axioms.lean`, 101 theorems, enforced via `#guard_msgs`):**
+- **Source-level theorems (`MemcpyCrc32c/Axioms.lean`, 102 theorems, enforced via `#guard_msgs`):**
   1. Lean 4.35.0's kernel and Mathlib's polynomial definitions (`[propext, Classical.choice, Quot.sound]`).
   2. For native execution: Lean's C codegen, Clang, and the 9 `@[extern]` bindings in `SimdModels/Trusted.lean` (`crc32c_u8/16/32/64`, `clmulLo/Hi`, `loadU8`, `loadU64LE`, `cpuHasCrcClmul`), plus the ~295-line C++ wrapper `cxx/leancrc32c.cc`.
 - **AArch64 machine-code theorems (`MemcpyCrc32c/Arm64.lean`, hardware CRC call graph on this binary):**
@@ -181,7 +181,7 @@ MemcpyCrc32c/
   Portable.lean               # Equivalence proof for 3-tier Chorba portable kernel
   Hw.lean, HwKernel.lean      # Equivalence proof for 3-regime CRC32C + CLMUL kernel
   Memcpy.lean, Dispatch.lean  # Copy-and-CRC & opaque runtime CPU-dispatch proofs
-  CApi.lean, Axioms.lean      # C-ABI entry-point theorems & #guard_msgs axiom audit (101 theorems)
+  CApi.lean, Axioms.lean      # C-ABI entry-point theorems & #guard_msgs axiom audit (102 theorems)
   Impl/                       # Mathlib-free executable Lean implementations
   Arm64.lean, Arm64/          # AArch64 binary machine-code proofs (7 functions, 1,137 insns)
 lean-simd-models/

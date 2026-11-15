@@ -19,7 +19,10 @@ theorems in `MemcpyCrc32c.PolyAlgebra` and `MemcpyCrc32c.ZeroPolyMinimal`:
      corruption confined to a 4-byte window in the payload) is always detected
      (`Spec.extend_detects_burst32`, `Spec.extend_ne_of_burst4Bytes`).
 
-3. **Exact Castagnoli / Koopman Hamming-distance bounds (payload + 32-bit CRC):**
+3. **Hamming-distance guarantees (payload + 32-bit CRC), at Koopman's published
+   lengths rounded down to whole bytes.** Only detection is proven here; that the
+   limits cannot be raised follows informally from the zero polynomials in
+   `MemcpyCrc32c.ZeroPoly`:
    - **HD = 4** (`1..3` bit flips): up to `8 * a.size + 32 ≤ 2^31 - 1`
      (`a.size ≤ 268,435,451` bytes, `2,147,483,615` data bits).
    - **HD = 6** (`1..5` bit flips): up to `8 * a.size + 32 ≤ 5275`

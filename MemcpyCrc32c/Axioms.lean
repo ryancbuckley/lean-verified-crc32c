@@ -56,6 +56,8 @@ open Crc32c
 #guard_msgs in #print axioms irreducible_X_add_one
 /-- info: 'Crc32c.irreducible_P31' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in #print axioms irreducible_P31
+/-- info: 'Crc32c.orderOf_root_P31' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in #print axioms orderOf_root_P31
 /-- info: 'Crc32c.squarefree_G' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in #print axioms squarefree_G
 /-- info: 'Crc32c.orderOf_π_X' depends on axioms: [propext, Classical.choice, Quot.sound] -/

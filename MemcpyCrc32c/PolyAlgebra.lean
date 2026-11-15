@@ -204,6 +204,30 @@ theorem isCoprime_X_add_one_P31 : IsCoprime (X + 1 : (ZMod 2)[X]) P31 := by
   rw [this, zero_mul] at hev
   exact one_ne_zero hev
 
+/-- `P31` is primitive: `X` has multiplicative order `2^31 - 1` modulo `P31`, so
+it generates the whole unit group of the field `GF(2)[X]/(P31)`. -/
+theorem orderOf_root_P31 : orderOf (AdjoinRoot.root P31) = 2 ^ 31 - 1 := by
+  have hG0 : G.eval₂ (AdjoinRoot.of P31) (AdjoinRoot.root P31) = 0 := by
+    rw [← AdjoinRoot.algebraMap_eq, ← aeval_def, AdjoinRoot.aeval_eq]
+    exact AdjoinRoot.mk_eq_zero.mpr P31_dvd_G
+  have hpow : AdjoinRoot.root P31 ^ (2 ^ 31 - 1) = 1 := by
+    have hroot : AdjoinRoot.lift (AdjoinRoot.of P31) _ hG0 (π X) = AdjoinRoot.root P31 :=
+      AdjoinRoot.lift_root hG0
+    rw [← hroot, ← map_pow, π_X_pow_mersenne, map_one]
+  rcases prime_mersenne_31.eq_one_or_self_of_dvd _ (orderOf_dvd_of_pow_eq_one hpow) with h1 | h
+  · exfalso
+    have hα1 := orderOf_eq_one_iff.mp h1
+    have hmk : AdjoinRoot.mk P31 (X + 1) = 0 := by
+      rw [map_add, AdjoinRoot.mk_X, map_one, hα1,
+        ← map_one (AdjoinRoot.mk P31), ← map_add, CharTwo.add_self_eq_zero, map_zero]
+    have hx1_ne : (X + 1 : (ZMod 2)[X]) ≠ 0 := by
+      intro h; have := degree_X_add_C (1 : ZMod 2); simp [h] at this
+    have hle := Polynomial.natDegree_le_of_dvd (AdjoinRoot.mk_eq_zero.mp hmk) hx1_ne
+    have hdeg_x1 : (X + 1 : (ZMod 2)[X]).natDegree = 1 := natDegree_X_add_C 1
+    rw [P31_natDegree, hdeg_x1] at hle
+    omega
+  · exact h
+
 /-- `G` is squarefree in `GF(2)[X]`. -/
 theorem squarefree_G : Squarefree G := by
   rw [G_eq_mul_P31, squarefree_mul_iff]
