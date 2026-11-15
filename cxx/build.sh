@@ -42,6 +42,12 @@ for m in Models Trusted; do
   compile_c "lean-simd-models/.lake/build/ir/SimdModels/$m.c" ""
 done
 
+# Hand-written AArch64 copy routine (empty object on other targets). Its bytes
+# are the ones proven in MemcpyCrc32c/Arm64/Copy.lean.
+"$CC" -c cxx/leancrc32c_copy_arm64.S -o "$OUT/leancrc32c_copy_arm64.o" \
+  2> >(grep -v "newer 'macOS'" >&2 || true)
+OBJS+=("$OUT/leancrc32c_copy_arm64.o")
+
 "$CXX" -std=c++17 -O3 -fno-exceptions -fno-rtti $CFLAGS_EXTRA -I"$PREFIX/include" -Icxx \
   -c cxx/leancrc32c.cc -o "$OUT/leancrc32c.o" \
   2> >(grep -v "newer 'macOS'" >&2 || true)

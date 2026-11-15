@@ -292,6 +292,16 @@ def build_synthetic_suite(rng):
         0x6DBF0BE1,  # stp d1, d2, [sp, #-16]!
         0x6CC10BE1,  # ldp d1, d2, [sp], #16 (zeros upper 64 of v1, v2!)
         0x6D410BE1,  # ldp d1, d2, [sp, #16]
+        0xADBF0BE1,  # stp q1, q2, [sp, #-32]!
+        0xACC10BE1,  # ldp q1, q2, [sp], #16
+        0xAD010BE1,  # stp q1, q2, [sp, #16]
+        0xAD410BE1,  # ldp q1, q2, [sp, #16]
+        0xAD7F0BE1,  # ldp q1, q2, [sp, #-16]
+        0xAD3E7FE1,  # stp q1, q31, [sp, #-64]
+        0xAC010BE1,  # stnp q1, q2, [sp, #16]
+        0xAC410BE1,  # ldnp q1, q2, [sp, #16]
+        0xAC7F0BE1,  # ldnp q1, q2, [sp, #-16]
+        0xAC3E7FE1,  # stnp q1, q31, [sp, #-64]
         0x390013E1,  # strb w1, [sp, #4]
         0x394013E1,  # ldrb w1, [sp, #4]
         0x790013E1,  # strh w1, [sp, #8]
@@ -428,11 +438,17 @@ def main():
                     imm7 -= 0x80
                 opc = (w >> 30) & 3
                 simd_p = (w >> 26) & 1
-                scale = 3 if (simd_p or opc == 2) else 2
+                # SIMD pairs: opc 1 = D (8 bytes each), opc 2 = Q (16 bytes each)
+                scale = (2 + opc) if simd_p else (3 if opc == 2 else 2)
                 mode = (w >> 23) & 7
                 addr = base_val if mode == 1 else (base_val + (imm7 << scale))
                 w_lo = (addr - MEM_BASE) // 8
-                w_hi = min(MEM_WORDS - 1, w_lo + 2)
+                # a Q pair writes four 8-byte words; read one extra word either side
+                if simd_p and opc == 2:
+                    w_hi = min(MEM_WORDS - 1, w_lo + 4)
+                    w_lo = max(0, w_lo - 1)
+                else:
+                    w_hi = min(MEM_WORDS - 1, w_lo + 2)
             elif (w & 0x3B000000) == 0x39000000:
                 sz = (w >> 30) & 3
                 imm12 = (w >> 10) & 0xFFF

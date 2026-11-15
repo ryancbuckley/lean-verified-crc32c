@@ -265,6 +265,10 @@ def writeU64LE (m : Mem) (addr : UInt64) (v : UInt64) : Option Mem := do
   let m ← m.writeU8 (addr + 6) (v >>> 48).toUInt8
   m.writeU8 (addr + 7) (v >>> 56).toUInt8
 
+def writeV128LE (m : Mem) (addr : UInt64) (v : V128) : Option Mem := do
+  let m ← m.writeU64LE addr (V128.lo64 v)
+  m.writeU64LE (addr + 8) (V128.lane64 v 1)
+
 end Mem
 
 /-- Architectural user-level A64 machine state. -/
@@ -432,6 +436,11 @@ inductive Instr where
   | stpGP (sf : Bool) (mode : PairMode) (rt rt2 rn : RegIdx) (off : UInt64)
   | ldpD (mode : PairMode) (rt rt2 rn : RegIdx) (off : UInt64)
   | stpD (mode : PairMode) (rt rt2 rn : RegIdx) (off : UInt64)
+  /-- `LDP Qt, Qt2` and the non-temporal `LDNP Qt, Qt2` (decoded as `.signedOffset`:
+  architecturally the same load, plus a cache hint that has no state effect). -/
+  | ldpQ (mode : PairMode) (rt rt2 rn : RegIdx) (off : UInt64)
+  /-- `STP Qt, Qt2` and the non-temporal `STNP Qt, Qt2` (decoded as `.signedOffset`). -/
+  | stpQ (mode : PairMode) (rt rt2 rn : RegIdx) (off : UInt64)
   | ldrUImm (sz : MemSize) (rt rn : RegIdx) (off : UInt64)
   | strUImm (sz : MemSize) (rt rn : RegIdx) (off : UInt64)
   | ldrDImm (rt rn : RegIdx) (off : UInt64)
@@ -587,7 +596,15 @@ def decode (w : UInt32) : Option Instr :=
   -- 15. UMULH Xd, Xn, Xm
   else if (w &&& 0xFFE0FC00) == 0x9BC07C00 then
     some (.umulh rd rn rm)
-  -- 16. Load/store register pair (GP 32/64-bit and SIMD 64-bit D)
+  -- 16a. Non-temporal SIMD pair `LDNP / STNP Qt, Qt2, [Xn|SP, #imm]`: the same
+  -- load/store as the signed-offset `LDP / STP Qt, Qt2`, with a cache hint.
+  else if (w &&& 0xFF800000) == 0xAC000000 then
+    let isLoad : Bool := ((w >>> 22) &&& 1) == 1
+    let off := signExtend64 7 (((w >>> 15) &&& 0x7F).toUInt64) <<< 4
+    if isLoad && rd == ra then none
+    else some (if isLoad then .ldpQ .signedOffset rd ra rn off
+               else .stpQ .signedOffset rd ra rn off)
+  -- 16. Load/store register pair (GP 32/64-bit, SIMD 64-bit D and 128-bit Q)
   else if (w &&& 0x3A000000) == 0x28000000 then do
     let opc := (w >>> 30) &&& 0x3
     let isSimd : Bool := ((w >>> 26) &&& 1) == 1
@@ -606,6 +623,10 @@ def decode (w : UInt32) : Option Instr :=
       let off := imm7 <<< 3
       if isLoad && rd == ra then none
       else some (if isLoad then .ldpD mode rd ra rn off else .stpD mode rd ra rn off)
+    else if isSimd && opc == 2 then
+      let off := imm7 <<< 4
+      if isLoad && rd == ra then none
+      else some (if isLoad then .ldpQ mode rd ra rn off else .stpQ mode rd ra rn off)
     else none
   -- 17. Load/store unsigned immediate (GP 8/16/32/64-bit and SIMD D/Q)
   else if (w &&& 0x3B000000) == 0x39000000 then
@@ -899,6 +920,22 @@ def execInstr (s : ArmState) (ins : Instr) : Option ArmState :=
     let addr := if mode == .postIndex then base else base + off
     let m1 ← s.mem.writeU64LE addr (s.getD rt)
     let m2 ← m1.writeU64LE (addr + 8) (s.getD rt2)
+    let s1 := { s with mem := m2 }
+    let s2 := if mode == .signedOffset then s1 else s1.setXSP rn (base + off)
+    some s2.nextPC
+  | .ldpQ mode rt rt2 rn off => do
+    let base := s.getXSP rn
+    let addr := if mode == .postIndex then base else base + off
+    let v1 ← s.mem.readV128LE addr
+    let v2 ← s.mem.readV128LE (addr + 16)
+    let s1 := (s.setV rt v1).setV rt2 v2
+    let s2 := if mode == .signedOffset then s1 else s1.setXSP rn (base + off)
+    some s2.nextPC
+  | .stpQ mode rt rt2 rn off => do
+    let base := s.getXSP rn
+    let addr := if mode == .postIndex then base else base + off
+    let m1 ← s.mem.writeV128LE addr (s.getV rt)
+    let m2 ← m1.writeV128LE (addr + 16) (s.getV rt2)
     let s1 := { s with mem := m2 }
     let s2 := if mode == .signedOffset then s1 else s1.setXSP rn (base + off)
     some s2.nextPC

@@ -7,6 +7,7 @@ Not imported by `MemcpyCrc32c` (the Phase 1-6 library): build it with
 instruction words in `Arm64/Code.lean` are the bytes in the compiled objects.
 -/
 import MemcpyCrc32c.Arm64.ExtendHwRaw
+import MemcpyCrc32c.Arm64.Copy
 
 open Crc32c.Arm64MC
 
@@ -30,3 +31,7 @@ open Crc32c.Arm64MC
 #guard_msgs in #print axioms extendHwRaw_mc_spec
 /-- info: 'Crc32c.Arm64MC.extendHwRaw_mc_eq_lean' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in #print axioms extendHwRaw_mc_eq_lean
+
+-- Hand-written copy routine (`cxx/leancrc32c_copy_arm64.S`, 31 instructions).
+/-- info: 'Crc32c.Arm64MC.copyLarge_mc_spec' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in #print axioms copyLarge_mc_spec

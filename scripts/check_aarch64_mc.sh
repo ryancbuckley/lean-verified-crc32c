@@ -16,3 +16,7 @@ clang -std=c11 -Wall -Wextra -Wpedantic -Werror -O2 -Icxx \
   2> >(grep -v "newer 'macOS'" >&2 || true)
 
 python3 scripts/check_aarch64_mc.py
+python3 scripts/check_aarch64_copy_mc.py
+clang -std=c11 -Wall -Wextra -Wpedantic -Werror -O2 \
+  cxx/test_copy_large.c build/cxx/leancrc32c_copy_arm64.o -o build/cxx/test_copy_large
+build/cxx/test_copy_large
