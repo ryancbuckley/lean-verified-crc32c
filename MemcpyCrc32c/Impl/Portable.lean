@@ -1,7 +1,7 @@
 /-
 The portable CRC32C path: plain `UInt64` word operations and no carry-less
 multiply. Lookup tables are used only to finish each stream (its last 32
-bytes), for tail bytes, and for inputs shorter than 40 bytes. Inputs of 8 KiB
+bytes), for tail bytes, and for inputs shorter than 40 bytes. Inputs of 2 KiB
 and more are split into four streams folded in lockstep (`fold209_4x`).
 Core-only executable code; proven equal to the reference in
 `MemcpyCrc32c.Portable`.
@@ -21,7 +21,7 @@ namespace Crc32c
 theorem usize_size_gt : 0x80000000 ≤ USize.size := by
   rcases System.Platform.numBits_eq with h | h <;> simp [USize.size, h]
 
-theorem usize_8192_toNat : (8192 : USize).toNat = 8192 := by
+theorem usize_2048_toNat : (2048 : USize).toNat = 2048 := by
   simp
 
 theorem usize_ofNat_lt_8 (k : Nat) (hk : k < 8) : (USize.ofNat k).toNat < 8 := by
@@ -206,6 +206,79 @@ decreasing_by omega
 /-- `X^64 mod G`, precomputed once from `x8` for combining multi-stream words. -/
 def x64 : UInt32 := powMod x8 8
 
+/-- Unrolled non-recursive 32-bit multiplication modulo `G` (`mulMod.go 32 a b 0`),
+structured so `a`'s 31 `stepBit` powers depend only on `a` and are CSE'd across
+all three stream multiplies inside `combine4x`. -/
+@[inline] def stepBit4 (a : UInt32) : UInt32 := stepBit (stepBit (stepBit (stepBit a)))
+@[inline] def stepBit8 (a : UInt32) : UInt32 := stepBit4 (stepBit4 a)
+@[inline] def shl4 (b : UInt32) : UInt32 := (((b <<< 1) <<< 1) <<< 1) <<< 1
+@[inline] def shl8 (b : UInt32) : UInt32 := shl4 (shl4 b)
+
+@[inline] def mulMod4 (a b acc : UInt32) : UInt32 :=
+  let acc := if b &&& 0x80000000 = 0x80000000 then acc ^^^ a else acc
+  let a := stepBit a; let b := b <<< 1
+  let acc := if b &&& 0x80000000 = 0x80000000 then acc ^^^ a else acc
+  let a := stepBit a; let b := b <<< 1
+  let acc := if b &&& 0x80000000 = 0x80000000 then acc ^^^ a else acc
+  let a := stepBit a; let b := b <<< 1
+  if b &&& 0x80000000 = 0x80000000 then acc ^^^ a else acc
+
+@[inline] def mulMod8 (a b acc : UInt32) : UInt32 :=
+  mulMod4 (stepBit4 a) (shl4 b) (mulMod4 a b acc)
+
+@[inline] def mulMod16 (a b acc : UInt32) : UInt32 :=
+  mulMod8 (stepBit8 a) (shl8 b) (mulMod8 a b acc)
+
+@[inline] def mulModFast (a b : UInt32) : UInt32 :=
+  mulMod16 (stepBit8 (stepBit8 a)) (shl8 (shl8 b)) (mulMod16 a b 0)
+
+/-- Byte `m` of the packed 8 KiB shift table (`2049` `UInt32` entries):
+entry `ws` (`0 ≤ ws ≤ 2048`) stores `powMod x64 ws` (`X^(64 * ws) mod G`),
+covering 4-stream inputs up to `64 KiB` in a single 32-bit load. -/
+def x64ShiftEntry (m : Fin 8196) : UInt8 :=
+  let ws := m.val / 4
+  let shift := ((m.val % 4) * 8).toUInt32
+  let entry := powMod x64 ws
+  (entry >>> shift).toUInt8
+
+def x64ShiftBytes : ByteArray :=
+  ByteArray.mk (Array.ofFn x64ShiftEntry)
+
+theorem x64ShiftBytes_size : x64ShiftBytes.size = 8196 := by
+  simp [x64ShiftBytes, ByteArray.size]
+
+theorem x64ShiftBytes_uget (j : USize) (h : j.toNat < x64ShiftBytes.size) :
+    x64ShiftBytes.uget j h =
+      x64ShiftEntry ⟨j.toNat, by simpa [x64ShiftBytes_size] using h⟩ := by
+  have key : ∀ {n : Nat} (f : Fin n → UInt8) (h' : j.toNat < (ByteArray.mk (Array.ofFn f)).size),
+      (ByteArray.mk (Array.ofFn f)).uget j h' = f ⟨j.toNat, by simpa [ByteArray.size] using h'⟩ := by
+    intro n f h'; simp [ByteArray.uget]
+  exact key x64ShiftEntry h
+
+@[inline] def x64ShiftSmall (ws : USize) (hws : ws.toNat < 2049) : UInt32 :=
+  have hgt := usize_size_gt
+  have hsz := x64ShiftBytes_size
+  have hs : x64ShiftBytes.size < USize.size := by omega
+  have hpow : 2 ^ System.Platform.numBits = USize.size := rfl
+  have h4 : (4 : USize).toNat = 4 := by simp
+  have hmul : (ws * 4).toNat = ws.toNat * 4 := by
+    rw [USize.toNat_mul, h4]; exact Nat.mod_eq_of_lt (by omega)
+  load32 x64ShiftBytes (ws * 4) hs (by omega)
+
+@[inline] def x64ShiftWords (ws : USize) : UInt32 :=
+  if h : ws < 2049 then
+    have e2049 : (2049 : USize).toNat = 2049 := by simp
+    x64ShiftSmall ws (by have := USize.lt_iff_toNat_lt.mp h; omega)
+  else
+    powModU64 x64 0x80000000 ws.toUInt64
+
+/-- Out-of-line 4-stream algebraic combiner: keeps the unrolled multiplication
+out of `fold209_4x`'s hot loop while sharing `f`'s 31 `stepBit` powers across
+all three Horner steps (`mulModFast f x`). -/
+@[noinline] def combine4x (ws : USize) (sa sb sc sd : UInt32) : UInt32 :=
+  let f := x64ShiftWords ws
+  mulModFast f (mulModFast f (mulModFast f sa ^^^ sb) ^^^ sc) ^^^ sd
+
 /-- Fold the final four 64-bit words at `a[p, p + 32)` with pending window `(n1, n2, n3, n4)`. -/
 @[inline] def finish209 (a : @& ByteArray) (hs : a.size < USize.size) (p : USize)
     (hp : p.toNat + 32 ≤ a.size) (n1 n2 n3 n4 : UInt64) : UInt32 :=
@@ -283,8 +356,7 @@ def fold209_4x (a : @& ByteArray) (hs : a.size < USize.size) (i stop L L2 L3 : U
     let sb := finish209Out a hs (stop + L) (by omega) b1 b2 b3 b4
     let sc := finish209Out a hs (stop + L2) (by omega) c1 c2 c3 c4
     let sd := finish209Out a hs (stop + L3) (by omega) d1 d2 d3 d4
-    let f := powModU64 x64 0x80000000 (L / 8).toUInt64
-    mulMod (mulMod (mulMod sa f ^^^ sb) f ^^^ sc) f ^^^ sd
+    combine4x (L / 8) sa sb sc sd
 termination_by stop.toNat - i.toNat
 decreasing_by omega
 
@@ -294,9 +366,9 @@ decreasing_by omega
   have hpow : 2 ^ System.Platform.numBits = USize.size := rfl
   have hfin : (uoff + ulen).toNat = uoff.toNat + ulen.toNat := by
     rw [USize.toNat_add]; exact Nat.mod_eq_of_lt (by omega)
-  if h4x : 8192 ≤ ulen then
-    have e8192 := usize_8192_toNat
-    have h4x' : 8192 ≤ ulen.toNat := by have := USize.le_iff_toNat_le.mp h4x; omega
+  if h4x : 2048 ≤ ulen then
+    have e2048 := usize_2048_toNat
+    have h4x' : 2048 ≤ ulen.toNat := by have := USize.le_iff_toNat_le.mp h4x; omega
     have e32 : (32 : USize).toNat = 32 := by simp
     have e8 : (8 : USize).toNat = 8 := by simp
     have e4 : (4 : USize).toNat = 4 := by simp

@@ -585,12 +585,51 @@ theorem fold209_4x_spec (a : ByteArray) (hs : a.size < USize.size) (stop L L2 L3
       have hs3 : (stop + L3).toNat = stop.toNat + 3 * L.toNat := by
         rw [USize.toNat_add, hL3]; exact Nat.mod_eq_of_lt (by omega)
       have e8 : (8 : USize).toNat = 8 := by simp
-      have hf : π (P (powModU64 x64 0x80000000 (L / 8).toUInt64)) = π X ^ (8 * L.toNat) := by
-        rw [powModU64_eq_go, usize_toUInt64_toNat, USize.toNat_div, e8,
-          π_P_powMod_go, P_one, map_one, one_mul, π_P_x64, ← pow_mul,
-          show 64 * (L.toNat / 8) = 8 * L.toNat by omega]
-      simp only [hlt, ↓reduceDIte, P_xor, map_add, π_P_mulMod, hf,
+      have hmulFast (x y : UInt32) : π (P (mulModFast x y)) = π (P x) * π (P y) := by
+        have hgo : mulModFast x y = mulMod.go 32 x y 0 := rfl
+        rw [hgo, π_P_mulMod_go 32 x y 0 (fun j hj => by omega), P_zero]
+        simp
+      have hEntry (m : Fin 8196) (w r : Nat) (hr : r < 4) (hm : m.val = w * 4 + r) :
+          x64ShiftEntry m = ((powMod x64 w) >>> (r * 8).toUInt32).toUInt8 := by
+        unfold x64ShiftEntry; rw [hm]
+        have hd : (w * 4 + r) / 4 = w := by omega
+        have hmod : (w * 4 + r) % 4 = r := by omega
+        simp only [hd, hmod]
+      have hSmall (ws : USize) (hws : ws.toNat < 2049) :
+          x64ShiftSmall ws hws = powMod x64 ws.toNat := by
+        have hs8 : 8196 < USize.size := by have := usize_size_gt; omega
+        have h4 : (4 : USize).toNat = 4 := by simp
+        have hbase : (ws * 4).toNat = ws.toNat * 4 := by
+          rw [USize.toNat_mul, h4]; exact Nat.mod_eq_of_lt (by omega)
+        have r0 : (ws * 4).toNat = ws.toNat * 4 + 0 := hbase.trans (Nat.add_zero _).symm
+        have r1 : (ws * 4 + 1).toNat = ws.toNat * 4 + 1 :=
+          (usize_add_toNat (ws * 4) 1 (by omega)).trans (by omega)
+        have r2 : (ws * 4 + 2).toNat = ws.toNat * 4 + 2 :=
+          (usize_add_toNat (ws * 4) 2 (by omega)).trans (by omega)
+        have r3 : (ws * 4 + 3).toNat = ws.toNat * 4 + 3 :=
+          (usize_add_toNat (ws * 4) 3 (by omega)).trans (by omega)
+        unfold x64ShiftSmall load32
+        dsimp only
+        simp only [SimdModels.loadU8, SimdModels.Model.loadU8]
+        rw [x64ShiftBytes_uget, x64ShiftBytes_uget, x64ShiftBytes_uget, x64ShiftBytes_uget,
+          hEntry _ ws.toNat 0 (by omega) r0,
+          hEntry _ ws.toNat 1 (by omega) r1,
+          hEntry _ ws.toNat 2 (by omega) r2,
+          hEntry _ ws.toNat 3 (by omega) r3]
+        simpa using word32_bytes (powMod x64 ws.toNat)
+      have hf : π (P (x64ShiftWords (L / 8))) = π X ^ (8 * L.toNat) := by
+        unfold x64ShiftWords
+        by_cases hsm : L / 8 < 2049
+        · have e2049 : (2049 : USize).toNat = 2049 := by simp
+          have hlt2 : (L / 8).toNat < 2049 := by have := USize.lt_iff_toNat_lt.mp hsm; omega
+          simp only [hsm, ↓reduceDIte, hSmall (L / 8) hlt2, USize.toNat_div, e8,
+            π_P_powMod, π_P_x64, ← pow_mul, show 64 * (L.toNat / 8) = 8 * L.toNat by omega]
+        · simp only [hsm, ↓reduceDIte, powModU64_eq_go, usize_toUInt64_toNat, USize.toNat_div, e8,
+            π_P_powMod_go, P_one, map_one, one_mul, π_P_x64, ← pow_mul,
+            show 64 * (L.toNat / 8) = 8 * L.toNat by omega]
+      simp only [hlt, ↓reduceDIte, combine4x, P_xor, map_add, hmulFast, hf,
         finish209Out_spec, hs1, hs2, hs3, heq]
+      ring
 
 theorem fold209_4x_entry (s : UInt32) (a : ByteArray) (hs : a.size < USize.size)
     (uoff stop L L2 L3 : USize)
@@ -646,9 +685,9 @@ theorem rawExtendPortableUSize_eq (s : UInt32) (a : ByteArray) (hs : a.size < US
   have hpow : 2 ^ System.Platform.numBits = USize.size := rfl
   have hfin : (uoff + ulen).toNat = uoff.toNat + ulen.toNat := by
     rw [USize.toNat_add]; exact Nat.mod_eq_of_lt (by omega)
-  by_cases h4x : 8192 ≤ ulen
-  · have e8192 := usize_8192_toNat
-    have h4x' : 8192 ≤ ulen.toNat := by have := USize.le_iff_toNat_le.mp h4x; omega
+  by_cases h4x : 2048 ≤ ulen
+  · have e2048 := usize_2048_toNat
+    have h4x' : 2048 ≤ ulen.toNat := by have := USize.le_iff_toNat_le.mp h4x; omega
     have e32 : (32 : USize).toNat = 32 := by simp
     have e8 : (8 : USize).toNat = 8 := by simp
     have e4 : (4 : USize).toNat = 4 := by simp
