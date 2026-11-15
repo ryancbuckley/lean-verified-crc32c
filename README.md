@@ -19,7 +19,7 @@ Every CRC path—from a pure-register portable fallback to a 6-stream hardware `
 - **Verified CRC combinators.** `extend_append`, `concat_spec`, `removePrefix_spec`, `removeSuffix_spec`, and `extendZeroes_spec` are proven for unboxed $O(\log n)$ square-and-multiply arithmetic in $\mathbb{F}_2[X]/(G)$, alongside kernel-evaluated test vectors (`"123456789" -> 0xE3069283` and all five RFC 3720 B.4 iSCSI vectors).
 
 ### 2. Verified Portable Register Kernel (`MemcpyCrc32c/Portable.lean`)
-- **Zero-polynomial (Chorba) reduction for CRC32C.** Because $G(X)$ has 18 terms, $X + 1 \mid G(X)$ and every multiple of $G$ has even weight (`eval_one_G`), so 3-term and 5-term zero polynomials do not exist for CRC32C. Exhaustive search certified the lowest-degree 6-term multiple:
+- **Zero-polynomial (Chorba) reduction for CRC32C.** Because $G(X)$ has 18 terms, $X + 1 \mid G(X)$ and every multiple of $G$ has even weight (`eval_one_G`), so 3-term and 5-term zero polynomials do not exist for CRC32C. The lowest-degree 6-term multiple, proven minimal by an exhaustive search checked in the Lean kernel (`zero6_209_minimal`: every nonzero multiple of $G$ with at most six terms has degree $\ge 209$), is:
   $$Z_{209}(X) = X^{209} + X^{144} + X^{54} + X^{39} + X^{14} + 1$$
   which cancels each 64-bit word and re-injects five shifted XORs across a 4-word register window.
 - **Three-tier register pipeline (zero scratch RAM, zero heap allocation):**
@@ -169,6 +169,7 @@ MemcpyCrc32c/
   Bitwise.lean, Vectors.lean  # Bit-at-a-time reference & RFC 3720 / standard test vectors
   Arith.lean                  # Proofs for append, concat, removePrefix/Suffix, extendZeroes
   ZeroPoly.lean, Word64.lean  # Certified CRC32C zero polynomials & 64-bit word lemmas
+  ZeroPolyMinimal.lean        # Kernel-checked proof that the 6-term zero polynomial has least degree
   Portable.lean               # Equivalence proof for 3-tier Chorba portable kernel
   Hw.lean, HwKernel.lean      # Equivalence proof for 3-regime CRC32C + CLMUL kernel
   Memcpy.lean, Dispatch.lean  # Copy-and-CRC & opaque runtime CPU-dispatch proofs

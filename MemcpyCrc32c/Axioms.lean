@@ -7,6 +7,7 @@ standard axioms (`propext`, `Classical.choice`, `Quot.sound`), with zero
 `bv_decide` or `native_decide` axioms.
 -/
 import MemcpyCrc32c.Vectors
+import MemcpyCrc32c.ZeroPolyMinimal
 import MemcpyCrc32c.Portable
 import MemcpyCrc32c.CApi
 import SimdModels
@@ -29,6 +30,7 @@ open Crc32c
 #print axioms rfc3720_iscsi_read
 #print axioms zeroes_u64max
 #print axioms zero6_209
+#print axioms zero6_209_minimal
 #print axioms zero6_290
 #print axioms zero4_5275
 #print axioms modByMonic_add_zeroPoly_mul

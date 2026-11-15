@@ -29,7 +29,8 @@ theorem dvd_of_π_eq_zero {p : (ZMod 2)[X]} (h : π p = 0) : G ∣ p :=
 theorem eval_one_G : G.eval 1 = 0 := by
   simp [G]; decide
 
-/-- The lowest-degree 6-term multiple of `G` (search bound: degree ≤ 400). -/
+/-- The lowest-degree 6-term multiple of `G`. Minimality is proven in
+`MemcpyCrc32c.ZeroPolyMinimal` (`zero6_209_minimal`). -/
 theorem zero6_209 : G ∣ X ^ 209 + X ^ 144 + X ^ 54 + X ^ 39 + X ^ 14 + 1 := by
   apply dvd_of_π_eq_zero
   have h : powMod x1 209 ^^^ powMod x1 144 ^^^ powMod x1 54 ^^^ powMod x1 39 ^^^
