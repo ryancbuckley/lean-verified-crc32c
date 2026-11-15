@@ -8,7 +8,7 @@ standard axioms (`propext`, `Classical.choice`, `Quot.sound`), with zero
 -/
 import MemcpyCrc32c.Vectors
 import MemcpyCrc32c.Portable
-import MemcpyCrc32c.HwKernel
+import MemcpyCrc32c.Memcpy
 import SimdModels
 
 open Crc32c
@@ -70,3 +70,7 @@ open Crc32c
 #print axioms rawExtendHw_eq
 #print axioms extendHw_eq_extend
 #print axioms extendHw_eq_spec
+
+-- Phase 5: theorem 6 (`memcpyCrc32c_spec`) for each path.
+#print axioms memcpyCrc32cPortable_spec
+#print axioms memcpyCrc32cHw_spec
