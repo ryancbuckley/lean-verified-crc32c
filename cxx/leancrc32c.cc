@@ -9,7 +9,8 @@
 //     `count <= 64`, computes the verified CRC on `src` first and then copies
 //     via overlapping fixed-width scalar loads/stores, avoiding both the
 //     dynamic `_memcpy` stub and 4 KiB store-to-load virtual-offset aliasing;
-//     for `count > 64`, uses `std::memcpy` in an outlined helper).
+//     for `count > 64`, uses the machine-code-verified `leancrc32c_copy_large`
+//     on AArch64 and `std::memcpy` elsewhere, in an outlined helper).
 //  3. Hands caller memory to the Lean CRC entry points as a *borrowed byte
 //     array without a header*: a `lean_object*` computed via unsigned
 //     `uintptr_t` arithmetic so that `SIMDMODELS_SARRAY_BYTES(a)` recovers the
@@ -45,6 +46,11 @@ uint32_t lp_leancrc32c_Crc32c_extendHwRaw___redArg(uint32_t c, lean_object* a, s
 uint32_t lp_leancrc32c_Crc32c_extendPortableRaw___redArg(uint32_t c, lean_object* a, size_t len);
 uint8_t lp_leancrc32c_Crc32c_hwAvailableRaw___redArg();
 }
+
+#if defined(__aarch64__)
+// cxx/leancrc32c_copy_arm64.S. Requires n >= 64 and non-overlapping ranges.
+extern "C" void leancrc32c_copy_large(void* dst, const void* src, size_t n) noexcept;
+#endif
 
 namespace {
 
@@ -161,6 +167,18 @@ inline void CopyUpTo64(void* dest, const void* src, size_t n) noexcept {
   d[n - 1] = b2;
 }
 
+// Copies `n > 64` non-overlapping bytes. On AArch64 this is the hand-written
+// `leancrc32c_copy_large` (cxx/leancrc32c_copy_arm64.S), whose machine code is
+// proven in MemcpyCrc32c/Arm64/Copy.lean (`copyLarge_mc_spec`, which needs
+// `n >= 64`); elsewhere it is the platform `memcpy`.
+inline void CopyOver64(void* dest, const void* src, size_t n) noexcept {
+#if defined(__aarch64__)
+  leancrc32c_copy_large(dest, src, n);
+#else
+  std::memcpy(dest, src, n);
+#endif
+}
+
 LEANCRC32C_NOINLINE uint32_t ExtendCrc32cInit(uint32_t initial_crc, const void* data,
                                               size_t count) noexcept {
   const uint8_t s = EnsureInitializedSlow();
@@ -181,7 +199,7 @@ LEANCRC32C_NOINLINE uint32_t ExtendCrc32cPortableInit(uint32_t initial_crc, cons
 
 LEANCRC32C_NOINLINE uint32_t MemcpyCrc32cLarge(void* dest, const void* src, size_t count,
                                                uint32_t initial_crc, uint8_t state) noexcept {
-  std::memcpy(dest, src, count);
+  CopyOver64(dest, src, count);
   if (__builtin_expect(state == kStateHw, 1)) {
     return lp_leancrc32c_Crc32c_extendHwRaw___redArg(
         initial_crc, BorrowAsByteArray(src), count);
@@ -208,7 +226,7 @@ LEANCRC32C_NOINLINE uint32_t MemcpyCrc32cInit(void* dest, const void* src, size_
 
 LEANCRC32C_NOINLINE uint32_t MemcpyCrc32cPortableLarge(void* dest, const void* src, size_t count,
                                                        uint32_t initial_crc) noexcept {
-  std::memcpy(dest, src, count);
+  CopyOver64(dest, src, count);
   return lp_leancrc32c_Crc32c_extendPortableRaw___redArg(
       initial_crc, BorrowAsByteArray(src), count);
 }
