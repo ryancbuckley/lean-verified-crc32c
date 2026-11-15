@@ -20,3 +20,6 @@ python3 scripts/check_aarch64_copy_mc.py
 clang -std=c11 -Wall -Wextra -Wpedantic -Werror -O2 \
   cxx/test_copy_large.c build/cxx/leancrc32c_copy_arm64.o -o build/cxx/test_copy_large
 build/cxx/test_copy_large
+clang -std=c11 -Wall -Wextra -Wpedantic -Werror -O2 \
+  cxx/test_copy_small.c build/cxx/leancrc32c_copy_arm64.o -o build/cxx/test_copy_small
+build/cxx/test_copy_small

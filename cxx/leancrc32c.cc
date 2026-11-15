@@ -5,12 +5,13 @@
 //     hardware-dispatch state (`kStateHw` vs `kStatePortable`) in a single
 //     atomic byte so post-startup calls pay one acquire byte load and branch
 //     directly to the verified hardware or portable entry point.
-//  2. Copies `[src, src + count)` to `dest` when `count > 0` (for
-//     `count <= 64`, computes the verified CRC on `src` first and then copies
-//     via overlapping fixed-width scalar loads/stores, avoiding both the
-//     dynamic `_memcpy` stub and 4 KiB store-to-load virtual-offset aliasing;
-//     for `count > 64`, uses the machine-code-verified `leancrc32c_copy_large`
-//     on AArch64 and `std::memcpy` elsewhere, in an outlined helper).
+//  2. Copies `[src, src + count)` to `dest` when `count > 0`, after computing
+//     the verified CRC on `src`. On AArch64 the copy is one of two hand-written
+//     routines whose machine code is proven in MemcpyCrc32c/Arm64/:
+//     `leancrc32c_copy_small` for `count <= 64` (tail-called; it returns the
+//     CRC) and `leancrc32c_copy_large` above, in an outlined helper. Elsewhere
+//     it is `CopyUpTo64` (overlapping fixed-width scalar loads/stores, avoiding
+//     the dynamic `_memcpy` stub) and `std::memcpy`.
 //  3. Hands caller memory to the Lean CRC entry points as a *borrowed byte
 //     array without a header*: a `lean_object*` computed via unsigned
 //     `uintptr_t` arithmetic so that `SIMDMODELS_SARRAY_BYTES(a)` recovers the
@@ -50,6 +51,8 @@ uint8_t lp_leancrc32c_Crc32c_hwAvailableRaw___redArg();
 #if defined(__aarch64__)
 // cxx/leancrc32c_copy_arm64.S. Requires n >= 64 and non-overlapping ranges.
 extern "C" void leancrc32c_copy_large(void* dst, const void* src, size_t n) noexcept;
+// Requires 1 <= n <= 64 and non-overlapping ranges.
+extern "C" uint32_t leancrc32c_copy_small(void* dst, const void* src, size_t n, uint32_t crc) noexcept;
 #endif
 
 namespace {
@@ -167,6 +170,18 @@ inline void CopyUpTo64(void* dest, const void* src, size_t n) noexcept {
   d[n - 1] = b2;
 }
 
+// Copies `1 <= n <= 64` non-overlapping bytes. On AArch64 this is the
+// hand-written `leancrc32c_copy_small`, whose machine code is proven in
+// MemcpyCrc32c/Arm64/CopySmall.lean; elsewhere it is the inline `CopyUpTo64`.
+inline uint32_t CopyUpTo64OrVerified(void* dest, const void* src, size_t n, uint32_t crc) noexcept {
+#if defined(__aarch64__)
+  return leancrc32c_copy_small(dest, src, n, crc);
+#else
+  CopyUpTo64(dest, src, n);
+  return crc;
+#endif
+}
+
 // Copies `n > 64` non-overlapping bytes. On AArch64 this is the hand-written
 // `leancrc32c_copy_large` (cxx/leancrc32c_copy_arm64.S), whose machine code is
 // proven in MemcpyCrc32c/Arm64/Copy.lean (`copyLarge_mc_spec`, which needs
@@ -218,8 +233,7 @@ LEANCRC32C_NOINLINE uint32_t MemcpyCrc32cInit(void* dest, const void* src, size_
                   initial_crc, BorrowAsByteArray(src), count)
             : lp_leancrc32c_Crc32c_extendPortableRaw___redArg(
                   initial_crc, BorrowAsByteArray(src), count);
-    CopyUpTo64(dest, src, count);
-    return crc;
+    return CopyUpTo64OrVerified(dest, src, count, crc);
   }
   return MemcpyCrc32cLarge(dest, src, count, initial_crc, s);
 }
@@ -237,8 +251,7 @@ LEANCRC32C_NOINLINE uint32_t MemcpyCrc32cPortableInit(void* dest, const void* sr
   if (count <= 64) {
     const uint32_t crc = lp_leancrc32c_Crc32c_extendPortableRaw___redArg(
         initial_crc, BorrowAsByteArray(src), count);
-    CopyUpTo64(dest, src, count);
-    return crc;
+    return CopyUpTo64OrVerified(dest, src, count, crc);
   }
   return MemcpyCrc32cPortableLarge(dest, src, count, initial_crc);
 }
@@ -287,8 +300,7 @@ uint32_t leancrc32c_memcpy_crc32c(void* dest, const void* src, size_t count,
                 initial_crc, BorrowAsByteArray(src), count)
           : lp_leancrc32c_Crc32c_extendPortableRaw___redArg(
                 initial_crc, BorrowAsByteArray(src), count);
-  CopyUpTo64(dest, src, count);
-  return crc;
+  return CopyUpTo64OrVerified(dest, src, count, crc);
 }
 
 uint32_t leancrc32c_memcpy_crc32c_portable(void* dest, const void* src, size_t count,
@@ -302,8 +314,7 @@ uint32_t leancrc32c_memcpy_crc32c_portable(void* dest, const void* src, size_t c
   }
   const uint32_t crc = lp_leancrc32c_Crc32c_extendPortableRaw___redArg(
       initial_crc, BorrowAsByteArray(src), count);
-  CopyUpTo64(dest, src, count);
-  return crc;
+  return CopyUpTo64OrVerified(dest, src, count, crc);
 }
 
 bool leancrc32c_hardware_available(void) noexcept {

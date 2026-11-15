@@ -116,9 +116,11 @@ Phase 7 theorems and checked against Arm's ASL the same way as the bindings.
   add-with-carry boundaries, bitmask immediates, upper-half zeroing, lane
   inserts, `SP` versus zero register, load/store-pair addressing modes).
 
-- Copy routine (`asl_vectors_arm64_copy.txt`): 913 further vectors over 161
+- Copy routines (`asl_vectors_arm64_copy.txt`): 999 further vectors over 196
   distinct words, no mismatch. They cover every word of
-  `leancrc32c_copy_large` and the 128-bit pair forms added for it
+  `leancrc32c_copy_large` and `leancrc32c_copy_small` (the `nop` alignment
+  padding between them is never executed and is not modelled) and the
+  128-bit pair forms added for the large routine
   (`LDP`/`STP Qt, Qt2` in pre-index, post-index and signed-offset modes, and
   the non-temporal `LDNP`/`STNP Qt, Qt2`, which the model decodes to the same
   load and store). Generating them exposed a harness limit, now fixed: for

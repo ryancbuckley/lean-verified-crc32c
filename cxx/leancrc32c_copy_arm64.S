@@ -60,4 +60,67 @@ SYM(leancrc32c_copy_large):
         stp     q4, q5, [x5, #-32]
         ret
 
+// leancrc32c_copy_small: copy `1 <= n <= 64` bytes from `src` to `dst`.
+//
+//   uint32_t leancrc32c_copy_small(void* dst /*x0*/, const void* src /*x1*/, size_t n /*x2*/,
+//                                  uint32_t crc /*w3*/);
+//
+// Preconditions: 1 <= n <= 64, and the ranges do not overlap. Returns `crc`
+// unchanged, so a caller that has just computed a CRC can tail-call it. Reads only
+// [src, src+n), writes only [dst, dst+n). Uses x0-x11 and v0-v3, no stack, no
+// calls. Every size class loads a head and a tail that together cover the
+// range (overlapping in the middle), then stores both; all loads come before
+// any store. Proven in MemcpyCrc32c/Arm64/CopySmall.lean.
+        .p2align 4
+        .globl  SYM(leancrc32c_copy_small)
+SYM(leancrc32c_copy_small):
+        add     x4, x1, x2                  // src end
+        add     x5, x0, x2                  // dst end
+        cmp     x2, #16
+        b.lo    4f
+        cmp     x2, #32
+        b.hi    1f
+        ldp     x6, x7, [x1]                // 16..32: two 16-byte halves
+        ldp     x8, x9, [x4, #-16]
+        stp     x6, x7, [x0]
+        stp     x8, x9, [x5, #-16]
+        mov     w0, w3                      // pass the CRC through
+        ret
+1:      ldp     q0, q1, [x1]                // 33..64: two 32-byte halves
+        ldp     q2, q3, [x4, #-32]
+        stp     q0, q1, [x0]
+        stp     q2, q3, [x5, #-32]
+        mov     w0, w3                      // pass the CRC through
+        ret
+4:      cmp     x2, #8
+        b.lo    5f
+        ldp     w6, w7, [x1]                // 8..15: two 8-byte halves
+        ldp     w8, w9, [x4, #-8]
+        stp     w6, w7, [x0]
+        stp     w8, w9, [x5, #-8]
+        mov     w0, w3                      // pass the CRC through
+        ret
+5:      cmp     x2, #4
+        b.lo    6f
+        ldr     w6, [x1]                    // 4..7: two 4-byte halves
+        sub     x8, x4, #4
+        ldr     w7, [x8]
+        str     w6, [x0]
+        sub     x9, x5, #4
+        str     w7, [x9]
+        mov     w0, w3                      // pass the CRC through
+        ret
+6:      lsr     x9, x2, #1                  // 1..3: first, middle, last byte
+        ldrb    w6, [x1]
+        ldrb    w7, [x1, x9]
+        sub     x8, x4, #1
+        ldrb    w8, [x8]
+        strb    w6, [x0]
+        add     x10, x0, x9
+        strb    w7, [x10]
+        sub     x11, x5, #1
+        strb    w8, [x11]
+        mov     w0, w3                      // pass the CRC through
+        ret
+
 #endif

@@ -8,6 +8,7 @@ instruction words in `Arm64/Code.lean` are the bytes in the compiled objects.
 -/
 import MemcpyCrc32c.Arm64.ExtendHwRaw
 import MemcpyCrc32c.Arm64.Copy
+import MemcpyCrc32c.Arm64.CopySmall
 
 open Crc32c.Arm64MC
 
@@ -32,6 +33,8 @@ open Crc32c.Arm64MC
 /-- info: 'Crc32c.Arm64MC.extendHwRaw_mc_eq_lean' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in #print axioms extendHwRaw_mc_eq_lean
 
--- Hand-written copy routine (`cxx/leancrc32c_copy_arm64.S`, 31 instructions).
+-- Hand-written copy routines (`cxx/leancrc32c_copy_arm64.S`, 31 + 48 instructions).
 /-- info: 'Crc32c.Arm64MC.copyLarge_mc_spec' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in #print axioms copyLarge_mc_spec
+/-- info: 'Crc32c.Arm64MC.copySmall_mc_spec' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in #print axioms copySmall_mc_spec
