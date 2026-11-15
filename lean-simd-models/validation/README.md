@@ -97,3 +97,26 @@ machine-readable Intrinsics Guide data. The proof shows the two Lean
 definitions agree; it cannot show the transcription is faithful. Unlike the
 Arm check, nothing from the vendor was executed. Still to do: derive or check
 the transcription from Intel's published pseudocode, and run on real hardware.
+
+## A64 instruction semantics for machine-code proofs (Phase 7)
+
+`SimdModels/Arm64.lean` is a decoder and step function for the A64
+instructions that occur in the seven verified functions. It is trusted by the
+Phase 7 theorems and checked against Arm's ASL the same way as the bindings.
+
+- `validation/aslp_arm64_vectors.py` runs real instruction words in ASLp from
+  a canary-filled state (all `X` and `V` registers, flags, and a 384-byte RAM
+  window) and records every register, flag and memory byte that changed.
+- `tests/AslArm64Check.lean` (`asl_arm64_check`, vectors on stdin) runs
+  `Arm64.step` from the same state and compares the whole resulting state.
+- Result: 3,017 full-state vectors over 996 distinct instruction words, no
+  mismatch. The words include all 873 distinct words of the seven verified
+  functions (two random states each, both outcomes for conditional branches)
+  plus edge-case families (condition codes against all flag values,
+  add-with-carry boundaries, bitmask immediates, upper-half zeroing, lane
+  inserts, `SP` versus zero register, load/store-pair addressing modes).
+
+Limits: two random states per compiled word is a smoke test of each encoding,
+not exhaustive coverage of its data path; the edge-case families carry most
+of the weight. Instructions outside this set decode to `none`, so a proof
+cannot silently step over an unmodelled instruction.
