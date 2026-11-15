@@ -1,2 +1,2 @@
-OK: 7 bindings agree with their models on 40000 edge pairs and 1000000 random pairs each (seed 1)
-OK: 7 bindings agree with their models on 40000 edge pairs and 1000000 random pairs each (seed 2)
+OK: 8 bindings agree with their models on 40000 edge pairs and 1000000 random pairs each (seed 1)
+OK: 8 bindings agree with their models on 40000 edge pairs and 1000000 random pairs each (seed 2)

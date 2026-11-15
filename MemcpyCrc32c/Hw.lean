@@ -74,6 +74,10 @@ theorem crc32c_u16_eq (c : UInt32) (v : UInt16) : SimdModels.crc32c_u16 c v = st
 theorem crc32c_u8_eq (c : UInt32) (b : UInt8) : SimdModels.crc32c_u8 c b = stepByte c b :=
   model_crc32c_u8_eq c b
 
+/-- The trusted byte load binding is definitionally equal to `ByteArray.uget`. -/
+@[simp] theorem loadU8_eq_uget (a : ByteArray) (i : USize) (h : i.toNat < a.size) :
+    SimdModels.loadU8 a i h = a.uget i h := rfl
+
 /-- The trusted unaligned little-endian 64-bit load binding is definitionally
 equal to `load64`. -/
 @[simp] theorem loadU64LE_eq_load64 (a : ByteArray) (i : USize) (hs : a.size < USize.size)

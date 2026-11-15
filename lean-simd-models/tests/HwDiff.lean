@@ -44,6 +44,14 @@ def check (x y : UInt64) : IO Unit := do
   if clmulLo x y != Model.clmulLo x y then fail "clmulLo" x y (clmulLo x y) (Model.clmulLo x y)
   if clmulHi x y != Model.clmulHi x y then fail "clmulHi" x y (clmulHi x y) (Model.clmulHi x y)
   let buf := packBuf24 x y (next (x ^^^ y))
+  let off8 : Nat := (x ^^^ (y >>> 9)).toNat % 24
+  if h8 : buf.size = 24 ∧ off8 < 24 then
+    have hu8 : off8.toUSize.toNat = off8 := by
+      have := Model.usize_size_gt; exact USize.toNat_ofNat_of_lt' (by omega)
+    have hb8 : off8.toUSize.toNat < buf.size := by omega
+    let got8 := loadU8 buf off8.toUSize hb8
+    let want8 := Model.loadU8 buf off8.toUSize hb8
+    if got8 != want8 then fail "loadU8" x y got8.toUInt64 want8.toUInt64
   let off : Nat := (x ^^^ (y >>> 17)).toNat % 17
   if h : buf.size = 24 ∧ off ≤ 16 then
     have hs : buf.size < USize.size := by have := Model.usize_size_gt; omega
@@ -66,4 +74,4 @@ def main (args : List String) : IO Unit := do
     s := next s; let x := s
     s := next s; let y := s
     check x y
-  IO.println s!"OK: 7 bindings agree with their models on {es.size * es.size} edge pairs and {n} random pairs each (seed {seed})"
+  IO.println s!"OK: 8 bindings agree with their models on {es.size * es.size} edge pairs and {n} random pairs each (seed {seed})"

@@ -16,6 +16,7 @@ is an assumption, invisible to `#print axioms`; this file is its record.
 | `crc32c_u64` | `CRC32CX`              | `CRC32 r64, r/m64`            |
 | `clmulLo`    | `PMULL` (low half)     | `PCLMULQDQ imm 0` (low half)  |
 | `clmulHi`    | `PMULL` (high half)    | `PCLMULQDQ imm 0` (high half) |
+| `loadU8`     | `LDRB Wt`              | `MOVZX r32, m8`               |
 | `loadU64LE`  | `LDR Xt` / `LDR Qt` ½  | `MOV r64, m64` / `MOVDQU` ½   |
 
 Plus `cpuHasCrcClmul`, the CPU-feature test that guards the hardware paths.
@@ -41,6 +42,10 @@ def clmulLo (a b : UInt64) : UInt64 := Model.clmulLo a b
 
 @[extern c inline "SIMDMODELS_CLMUL_HI(#1, #2)"]
 def clmulHi (a b : UInt64) : UInt64 := Model.clmulHi a b
+
+@[extern c inline "SIMDMODELS_LOAD_U8(#1, #2)"]
+def loadU8 (a : @& ByteArray) (i : USize) (h : i.toNat < a.size) : UInt8 :=
+  Model.loadU8 a i h
 
 @[extern c inline "SIMDMODELS_LOAD_U64_LE(#1, #2)"]
 def loadU64LE (a : @& ByteArray) (i : USize) (hs : a.size < USize.size)

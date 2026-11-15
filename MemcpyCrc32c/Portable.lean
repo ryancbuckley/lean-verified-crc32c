@@ -233,6 +233,7 @@ theorem tbl_eq (k : USize) (hk : k.toNat < 8) (b : UInt8) :
     (usize_add_toNat base 3 (by omega)).trans (by omega)
   unfold tbl
   dsimp only
+  simp only [SimdModels.loadU8, SimdModels.Model.loadU8]
   rw [sliceTableBytes_uget, sliceTableBytes_uget, sliceTableBytes_uget, sliceTableBytes_uget,
     sliceTableEntry_eq _ k.toNat b.toNat 0 hblt (by omega) h0,
     sliceTableEntry_eq _ k.toNat b.toNat 1 hblt (by omega) h1,

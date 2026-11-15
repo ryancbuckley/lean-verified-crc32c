@@ -171,6 +171,11 @@ def word64 (b0 b1 b2 b3 b4 b5 b6 b7 : UInt8) : UInt64 :=
   b0.toUInt64 ||| (b1.toUInt64 <<< 8) ||| (b2.toUInt64 <<< 16) ||| (b3.toUInt64 <<< 24) |||
     (b4.toUInt64 <<< 32) ||| (b5.toUInt64 <<< 40) ||| (b6.toUInt64 <<< 48) ||| (b7.toUInt64 <<< 56)
 
+/-- Unaligned byte load at byte offset `i` (`LDRB Wt` / `MOVZX r32, m8`).
+Proof argument `h` guarantees `i.toNat < a.size` and is erased at runtime. -/
+def loadU8 (a : @& ByteArray) (i : USize) (h : i.toNat < a.size) : UInt8 :=
+  a.uget i h
+
 /-- Unaligned little-endian 64-bit load at byte offset `i` (`LDR Xt` / `MOV r64, m64`,
 or half of `LDR Qt` / `MOVDQU xmm, m128`). Proof arguments `hs` and `h` guarantee
 `i.toNat + 8 ≤ a.size` and are erased at runtime. -/

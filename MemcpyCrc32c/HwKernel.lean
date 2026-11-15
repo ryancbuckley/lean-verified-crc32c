@@ -100,7 +100,7 @@ theorem hwTail1_eq (a : ByteArray) (i fin : USize) (hi : i.toNat ≤ fin.toNat)
   by_cases h1 : i < fin
   · have hlt : i.toNat < fin.toNat := USize.lt_iff_toNat_lt.mp h1
     have heq : fin.toNat = i.toNat + 1 := by omega
-    simp only [h1, ↓reduceDIte, crc32c_u8_eq]
+    simp only [h1, ↓reduceDIte, crc32c_u8_eq, loadU8_eq_uget]
     rw [uget_eq a i i.toNat rfl, bytes_cons a i.toNat fin.toNat hlt hfin,
       bytes_of_le a (by omega : fin.toNat ≤ i.toNat + 1)]
     rfl
@@ -298,6 +298,7 @@ theorem hwShiftSmall_eq (ws : USize) (h1 : 1 ≤ ws.toNat) (hws : ws.toNat < 512
     (usize_add_toNat (ws * 4) 3 (by omega)).trans (by omega)
   unfold hwShiftSmall load32
   dsimp only
+  simp only [loadU8_eq_uget]
   rw [hwShiftSmallBytes_uget, hwShiftSmallBytes_uget, hwShiftSmallBytes_uget, hwShiftSmallBytes_uget,
     hwShiftSmallEntry_eq _ ws.toNat 0 h1 hws (by omega) r0,
     hwShiftSmallEntry_eq _ ws.toNat 1 h1 hws (by omega) r1,

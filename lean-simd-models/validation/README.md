@@ -13,33 +13,37 @@ testing on hardware.
 | `crc32c_u64` | pass | pass under Rosetta only | Arm: pass (ASLp). Intel: partial (proven equal to a hand transcription of the SDM) |
 | `clmulLo` | pass | pass under Rosetta only | Arm: pass (ASLp). Intel: partial (proven equal to a hand transcription of the SDM) |
 | `clmulHi` | pass | pass under Rosetta only | Arm: pass (ASLp). Intel: partial (proven equal to a hand transcription of the SDM) |
+| `loadU8` | pass | pass under Rosetta only | Raw byte load (`SIMDMODELS_SARRAY_BYTES`) + `loadU8_eq_uget` kernel proof |
 | `loadU64LE` | pass | pass under Rosetta only | Little-endian `memcpy` + `V128.lane8_vld1q` kernel proof |
 
 ## AArch64 hardware differential test
 
 `tests/HwDiff.lean`, built as `hw_diff`. Compares the compiled Lean model with
-the hardware binding, for all seven bindings, on 40,000 edge pairs (all-zero,
+the hardware binding, for all eight data bindings, on 40,000 edge pairs (all-zero,
 all-one, single bits, complements, low runs, alternating patterns, and unaligned
 offsets `0..16`) and 10^6 random pairs per seed.
 
 - Machine: Apple M4 (AArch64, `+crc`, `+aes`), macOS 26, Lean 4.35.0 bundled clang 23.1.0.
-- Result: seeds 1 and 2, 2,080,000 pairs per binding (14,560,000 binding evaluations), no mismatch.
+- Result: seeds 1 and 2, 2,080,000 pairs per binding (16,640,000 binding evaluations), no mismatch.
   Raw output: `hw_diff_aarch64_apple_m4.txt`.
-- The disassembled test binary contains `crc32cb/ch/cw/cx`, `pmull`, and single-instruction unaligned `ldr`.
+- The disassembled test binary contains `crc32cb/ch/cw/cx`, `pmull`, single-instruction `ldrb`, and single-instruction unaligned `ldr`.
 
 ## x86-64
 
 No real x86-64 hardware has been used yet. `validation/cross_arch.c` evaluates
-all seven shim functions (plus all `PCLMULQDQ` immediate selector variants
+all eight data shim functions (plus all `PCLMULQDQ` immediate selector variants
 `0x00`, `0x01`, `0x10`, `0x11`, `0xFE`, `0xEF`, `0xFF`) on the edge pairs and
 10^6 random pairs, built once for `arm64` and once for baseline `x86_64`
 (without global `-msse4.2 -mpclmul`, exercising the per-function
 `__attribute__((__target__("sse4.2,pclmul")))` guards in `c/simd_shim.h`), and
 compares the outputs byte for byte.
 
-- Result: identical (232,960,000 bytes, SHA-256 `8646edaa…a5103c9`), with the
+- Result: identical (299,520,000 bytes, SHA-256 `f5948131…1e6d3997`), with the
   x86-64 build run under Rosetta 2. The x86-64 binary contains `crc32` and
-  `pclmulqdq` instructions.
+  `pclmulqdq` instructions; compiling `Hw.c` (`-msse4.2 -mpclmul`) and
+  `HwCombine.c` (`-msse4.2 -mpclmul -fno-vectorize -fno-slp-vectorize`) for
+  `x86_64` inlines all 246 `crc32*` and 140 `pclmulqdq` instructions with zero
+  out-of-line shim calls and zero post-SSE2 instructions in module initializers.
 - Rosetta is an emulator: this checks the shim, `__target__` attributes, and
   compiler lowering, not Intel or AMD silicon. A run on real hardware is still
   required.

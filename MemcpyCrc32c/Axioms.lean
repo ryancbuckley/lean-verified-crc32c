@@ -58,6 +58,7 @@ open Crc32c
 #print axioms crc32c_u32_eq
 #print axioms crc32c_u16_eq
 #print axioms crc32c_u8_eq
+#print axioms loadU8_eq_uget
 #print axioms loadU64LE_eq_load64
 #print axioms polyR_clmulLo_toUInt64
 #print axioms R128_clmul

@@ -19,6 +19,12 @@
 #include <stddef.h>
 #include <stdint.h>
 
+/* Unaligned byte load (LDRB Wt / MOVZX r32, m8). */
+static inline __attribute__((__always_inline__)) uint8_t
+simdmodels_load_u8_ptr(const uint8_t *p, size_t i) {
+  return p[i];
+}
+
 /* Unaligned little-endian 64-bit load (LDR Xt / MOV r64, m64, or half of LDR Qt / MOVDQU).
  * Exposes a single i64 load in LLVM IR so CGSCC inlining and SLPVectorizer can
  * form 128-bit vector loads across adjacent 64-bit halves (unlike 8 separate
@@ -153,7 +159,18 @@ static inline uint8_t simdmodels_cpu_has_crc_clmul(void) {
 #define SIMDMODELS_CRC32C_U64(c, v) simdmodels_crc32c_u64((c), (v))
 #define SIMDMODELS_CLMUL_LO(a, b)   simdmodels_clmul_lo((a), (b))
 #define SIMDMODELS_CLMUL_HI(a, b)   simdmodels_clmul_hi((a), (b))
+/* Raw byte pointer into a ByteArray's payload without forming or dereferencing
+ * a `lean_sarray_object *` (which asserts on `m_header` / `m_size` when !NDEBUG
+ * and requires 8-byte alignment in C/UBSan when `cxx/leanmemcpy.cc` passes a
+ * headerless borrowed pointer `p - offsetof(lean_sarray_object, m_data)` for an
+ * arbitrarily aligned caller pointer `p`). Unsigned `uintptr_t` arithmetic
+ * recovers `p` exactly without pointer-overflow or alignment UB. */
+#define SIMDMODELS_SARRAY_BYTES(a) \
+  ((const uint8_t *)((uintptr_t)(a) + offsetof(lean_sarray_object, m_data)))
+
+#define SIMDMODELS_LOAD_U8(a, i) \
+  simdmodels_load_u8_ptr(SIMDMODELS_SARRAY_BYTES(a), (size_t)(i))
 #define SIMDMODELS_LOAD_U64_LE(a, i) \
-  simdmodels_load_u64_le_ptr((const uint8_t *)lean_sarray_cptr(a), (size_t)(i))
+  simdmodels_load_u64_le_ptr(SIMDMODELS_SARRAY_BYTES(a), (size_t)(i))
 
 #endif

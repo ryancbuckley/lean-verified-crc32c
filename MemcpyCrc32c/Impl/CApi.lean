@@ -5,9 +5,12 @@ in `MemcpyCrc32c.CApi`.
 The wrapper presents caller memory to these functions as a borrowed
 `ByteArray` whose object header does not exist: only the data pointer is
 valid. So these functions must never read the array's size or touch its
-reference count. They take the length as a `USize` and reach the bytes only
-through `ByteArray.uget` and the trusted `loadU64LE`, both of which use the
-data pointer alone. `scripts/check_capi.sh` checks the generated C for this.
+reference count, nor form a struct-aligned `lean_sarray_object *` pointer.
+They take the length as a `USize` and reach the bytes only through the trusted
+`loadU8` and `loadU64LE` bindings (`SIMDMODELS_SARRAY_BYTES`), which use
+unsigned `uintptr_t` arithmetic on the data pointer alone. `scripts/check_capi.sh`
+statically audits the transitive C call graph and tests this under guard pages
+and sanitizers.
 
 Lean does not allow `@[export]` on functions with borrowed parameters (an
 exported function owns its arguments and would release the array, which

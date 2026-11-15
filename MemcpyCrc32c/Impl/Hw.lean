@@ -1,8 +1,8 @@
 /-
-The hardware-CRC + carry-less-multiply path, written in Lean against the seven
-trusted bindings of `lean-simd-models` (`crc32c_u8/16/32/64`, `clmulLo`,
-`clmulHi`, `loadU64LE`). Core-only executable code; proven equal to the
-reference in `MemcpyCrc32c.HwKernel`.
+The hardware-CRC + carry-less-multiply path, written in Lean against the eight
+trusted data-path bindings of `lean-simd-models` (`crc32c_u8/16/32/64`,
+`clmulLo`, `clmulHi`, `loadU8`, `loadU64LE`). Core-only executable code; proven
+equal to the reference in `MemcpyCrc32c.HwKernel`.
 
 Three length regimes keep every pipeline fed without wasting setup work on
 short buffers:
@@ -25,7 +25,7 @@ hardware CRC or carry-less-multiply instructions. Callers must dispatch to
 import MemcpyCrc32c.Impl.HwCombine
 
 namespace Crc32c
-open SimdModels (crc32c_u8 crc32c_u16 crc32c_u32 crc32c_u64 clmulLo clmulHi loadU64LE)
+open SimdModels (crc32c_u8 crc32c_u16 crc32c_u32 crc32c_u64 clmulLo clmulHi loadU8 loadU64LE)
 
 /-! ### 16-byte / 64-byte load, CRC, and carry-less-multiply folding helpers -/
 
@@ -115,7 +115,7 @@ to a single 128-bit residue at the end of a 64-byte chunk. -/
 @[inline] def hwTail1 (a : @& ByteArray) (i fin : USize) (hfin : fin.toNat ≤ a.size)
     (s : UInt32) : UInt32 :=
   if h1 : i < fin then
-    crc32c_u8 s (a.uget i (by have := USize.lt_iff_toNat_lt.mp h1; omega))
+    crc32c_u8 s (loadU8 a i (by have := USize.lt_iff_toNat_lt.mp h1; omega))
   else s
 
 /-- Absorb `< 4` remaining bytes via optional `crc32c_u16` + `hwTail1`. -/

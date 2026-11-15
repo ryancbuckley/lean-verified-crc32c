@@ -14,6 +14,7 @@ words are the whole state, so the loop reads memory and never writes it.
 -/
 import MemcpyCrc32c.Impl.Reference
 import MemcpyCrc32c.Impl.Arith
+import SimdModels.Trusted
 
 namespace Crc32c
 
@@ -52,7 +53,7 @@ theorem usize_toUInt64_toNat (x : USize) : x.toUInt64.toNat = x.toNat := by
 @[inline] def load16 (a : @& ByteArray) (i : USize) (hs : a.size < USize.size)
     (h : i.toNat + 2 ≤ a.size) : UInt16 :=
   have h1 : (i + 1).toNat = i.toNat + 1 := usize_add_toNat i 1 (by omega)
-  word16 (a.uget i (by omega)) (a.uget (i + 1) (by omega))
+  word16 (SimdModels.loadU8 a i (by omega)) (SimdModels.loadU8 a (i + 1) (by omega))
 
 /-- Unaligned little-endian 32-bit load at byte offset `i`. -/
 @[inline] def load32 (a : @& ByteArray) (i : USize) (hs : a.size < USize.size)
@@ -60,22 +61,13 @@ theorem usize_toUInt64_toNat (x : USize) : x.toUInt64.toNat = x.toNat := by
   have h1 : (i + 1).toNat = i.toNat + 1 := usize_add_toNat i 1 (by omega)
   have h2 : (i + 2).toNat = i.toNat + 2 := usize_add_toNat i 2 (by omega)
   have h3 : (i + 3).toNat = i.toNat + 3 := usize_add_toNat i 3 (by omega)
-  word32 (a.uget i (by omega)) (a.uget (i + 1) (by omega))
-    (a.uget (i + 2) (by omega)) (a.uget (i + 3) (by omega))
+  word32 (SimdModels.loadU8 a i (by omega)) (SimdModels.loadU8 a (i + 1) (by omega))
+    (SimdModels.loadU8 a (i + 2) (by omega)) (SimdModels.loadU8 a (i + 3) (by omega))
 
 /-- Unaligned little-endian 64-bit load at byte offset `i`. -/
 @[inline] def load64 (a : @& ByteArray) (i : USize) (hs : a.size < USize.size)
     (h : i.toNat + 8 ≤ a.size) : UInt64 :=
-  have h1 : (i + 1).toNat = i.toNat + 1 := usize_add_toNat i 1 (by omega)
-  have h2 : (i + 2).toNat = i.toNat + 2 := usize_add_toNat i 2 (by omega)
-  have h3 : (i + 3).toNat = i.toNat + 3 := usize_add_toNat i 3 (by omega)
-  have h4 : (i + 4).toNat = i.toNat + 4 := usize_add_toNat i 4 (by omega)
-  have h5 : (i + 5).toNat = i.toNat + 5 := usize_add_toNat i 5 (by omega)
-  have h6 : (i + 6).toNat = i.toNat + 6 := usize_add_toNat i 6 (by omega)
-  have h7 : (i + 7).toNat = i.toNat + 7 := usize_add_toNat i 7 (by omega)
-  word64 (a.uget i (by omega)) (a.uget (i + 1) (by omega)) (a.uget (i + 2) (by omega))
-    (a.uget (i + 3) (by omega)) (a.uget (i + 4) (by omega)) (a.uget (i + 5) (by omega))
-    (a.uget (i + 6) (by omega)) (a.uget (i + 7) (by omega))
+  SimdModels.loadU64LE a i hs h
 
 /-- Absorb the two bytes of a little-endian halfword, bit at a time. -/
 def stepU16 (s : UInt32) (v : UInt16) : UInt32 :=
@@ -142,10 +134,10 @@ theorem sliceTableBytes_uget (j : USize) (h : j.toNat < sliceTableBytes.size) :
   have h2 : (base + 2).toNat = base.toNat + 2 := usize_add_toNat base 2 (by have := b.toNat_lt; omega)
   have h3 : (base + 3).toNat = base.toNat + 3 := usize_add_toNat base 3 (by have := b.toNat_lt; omega)
   word32
-    (sliceTableBytes.uget base (by rw [sliceTableBytes_size]; have := b.toNat_lt; omega))
-    (sliceTableBytes.uget (base + 1) (by rw [sliceTableBytes_size]; have := b.toNat_lt; omega))
-    (sliceTableBytes.uget (base + 2) (by rw [sliceTableBytes_size]; have := b.toNat_lt; omega))
-    (sliceTableBytes.uget (base + 3) (by rw [sliceTableBytes_size]; have := b.toNat_lt; omega))
+    (SimdModels.loadU8 sliceTableBytes base (by rw [sliceTableBytes_size]; have := b.toNat_lt; omega))
+    (SimdModels.loadU8 sliceTableBytes (base + 1) (by rw [sliceTableBytes_size]; have := b.toNat_lt; omega))
+    (SimdModels.loadU8 sliceTableBytes (base + 2) (by rw [sliceTableBytes_size]; have := b.toNat_lt; omega))
+    (SimdModels.loadU8 sliceTableBytes (base + 3) (by rw [sliceTableBytes_size]; have := b.toNat_lt; omega))
 
 /-- `stepByte` by table lookup. -/
 @[inline] def stepByteT (s : UInt32) (b : UInt8) : UInt32 :=
@@ -174,7 +166,8 @@ theorem sliceTableBytes_uget (j : USize) (h : j.toNat < sliceTableBytes.size) :
 def bytesLoop (a : @& ByteArray) (i stop : USize) (hstop : stop.toNat ≤ a.size)
     (s : UInt32) : UInt32 :=
   if hlt : i < stop then
-    bytesLoop a (i + 1) stop hstop (stepByteT s (a.uget i (by rw [USize.lt_iff_toNat_lt] at hlt; omega)))
+    bytesLoop a (i + 1) stop hstop
+      (stepByteT s (SimdModels.loadU8 a i (by rw [USize.lt_iff_toNat_lt] at hlt; omega)))
   else s
 termination_by stop.toNat - i.toNat
 decreasing_by
