@@ -1,6 +1,8 @@
-# leanmemcpy
+# lean-verified-crc32c
 
-`leanmemcpy` is a formally verified implementation of CRC32C (`ExtendCrc32c`, `ComputeCrc32c`, and the CRC algebra operations `Concat`, `RemovePrefix`, `RemoveSuffix`, `ExtendByZeroes`) and fused memory-copy-with-CRC32C (`MemcpyCrc32c`) written in **Lean 4** (`v4.35.0`), with a zero-allocation **C11 / C++17** static library (`cxx/leanmemcpy.h`) that mirrors Abseil's CRC32C API. The library still links against Lean's runtime shared libraries (`libleanshared`, `libInit_shared`; see `build/cxx/LINK_FLAGS`) for one-time module initialization.
+`lean-verified-crc32c` is a formally verified implementation of CRC32C (`ExtendCrc32c`, `ComputeCrc32c`, and the CRC algebra operations `Concat`, `RemovePrefix`, `RemoveSuffix`, `ExtendByZeroes`) and fused memory-copy-with-CRC32C (`MemcpyCrc32c`) written in **Lean 4** (`v4.35.0`), with a zero-allocation **C11 / C++17** static library (`cxx/leanmemcpy.h`) that mirrors Abseil's CRC32C API. The library still links against Lean's runtime shared libraries (`libleanshared`, `libInit_shared`; see `build/cxx/LINK_FLAGS`) for one-time module initialization.
+
+**Naming.** This project was originally called `leanmemcpy`, and the code still uses that name: the Lake package, `cxx/leanmemcpy.h` / `.cc`, `libleanmemcpy.a`, and the compiled Lean symbols (`_lp_leanmemcpy_...`) that the machine-code proofs refer to.
 
 **Platform status.** Everything here was built, tuned, tested and benchmarked on one machine: an Apple M4 running macOS. x86-64 has only been exercised under Rosetta 2, and no other AArch64 core or operating system has been tried. Read every performance number below as an M4 number.
 
