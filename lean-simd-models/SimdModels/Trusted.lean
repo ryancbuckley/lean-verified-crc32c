@@ -18,6 +18,8 @@ is an assumption, invisible to `#print axioms`; this file is its record.
 | `clmulHi`    | `PMULL` (high half)    | `PCLMULQDQ imm 0` (high half) |
 | `loadU8`     | `LDRB Wt`              | `MOVZX r32, m8`               |
 | `loadU64LE`  | `LDR Xt` / `LDR Qt` ½  | `MOV r64, m64` / `MOVDQU` ½   |
+| `storeU64LE` | `STR Xt`               | `MOV m64, r64`                |
+| `storeU64x4LE` | four `STR Xt` (or two `STP`/`STR Qt`) | four `MOV m64, r64` |
 
 Plus `cpuHasCrcClmul`, the CPU-feature test that guards the hardware paths.
 -/
@@ -51,6 +53,18 @@ def loadU8 (a : @& ByteArray) (i : USize) (h : i.toNat < a.size) : UInt8 :=
 def loadU64LE (a : @& ByteArray) (i : USize) (hs : a.size < USize.size)
     (h : i.toNat + 8 ≤ a.size) : UInt64 :=
   Model.loadU64LE a i hs h
+
+/-- In-place when `a` is not shared, into a fresh copy otherwise (as
+`ByteArray.uset`); either way the result has the bytes the model says. -/
+@[extern c inline "SIMDMODELS_STORE_U64_LE(#1, #2, #3)"]
+def storeU64LE (a : ByteArray) (i : USize) (v : UInt64) (h : i.toNat + 8 ≤ a.size) : ByteArray :=
+  Model.storeU64LE a i v h
+
+/-- As `storeU64LE` for four consecutive words, with one uniqueness check. -/
+@[extern c inline "SIMDMODELS_STORE_U64X4_LE(#1, #2, #3, #4, #5, #6)"]
+def storeU64x4LE (a : ByteArray) (i : USize) (v0 v1 v2 v3 : UInt64)
+    (h : i.toNat + 32 ≤ a.size) : ByteArray :=
+  Model.storeU64x4LE a i v0 v1 v2 v3 h
 
 /-- CPU-feature detection: `true` only if this CPU has every instruction bound
 above. It is `opaque`, so no proof can depend on its value: any theorem about

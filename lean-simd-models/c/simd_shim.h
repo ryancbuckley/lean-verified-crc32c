@@ -40,6 +40,38 @@ simdmodels_load_u64_le_ptr(const uint8_t *p, size_t i) {
   return v;
 }
 
+/* In-place little-endian 64-bit stores into a byte array at byte offset `i`:
+ * one word, or four consecutive words with a single uniqueness check. Like
+ * `lean_byte_array_uset`, they write in place when the array is not shared
+ * and into a fresh copy otherwise. Only for real `lean_sarray_object`s, never
+ * for the headerless borrowed pointers the read-only entry points accept.
+ * Macros, because this header is included before <lean/lean.h>. */
+static inline __attribute__((__always_inline__)) uint64_t simdmodels_to_le64(uint64_t v) {
+#if defined(__BYTE_ORDER__) && defined(__ORDER_BIG_ENDIAN__) && \
+    (__BYTE_ORDER__ == __ORDER_BIG_ENDIAN__)
+  v = __builtin_bswap64(v);
+#endif
+  return v;
+}
+#define SIMDMODELS_STORE_U64_LE(a, i, v)                                   \
+  __extension__({                                                          \
+    lean_object *simdmodels_a_ = lean_sarray_ensure_exclusive(a);          \
+    uint64_t simdmodels_v_ = simdmodels_to_le64(v);                        \
+    __builtin_memcpy(lean_sarray_cptr(simdmodels_a_) + (size_t)(i),        \
+                     &simdmodels_v_, sizeof(simdmodels_v_));               \
+    simdmodels_a_;                                                         \
+  })
+#define SIMDMODELS_STORE_U64X4_LE(a, i, v0, v1, v2, v3)                    \
+  __extension__({                                                          \
+    lean_object *simdmodels_a_ = lean_sarray_ensure_exclusive(a);          \
+    uint64_t simdmodels_w_[4] = {                                          \
+        simdmodels_to_le64(v0), simdmodels_to_le64(v1),                    \
+        simdmodels_to_le64(v2), simdmodels_to_le64(v3)};                   \
+    __builtin_memcpy(lean_sarray_cptr(simdmodels_a_) + (size_t)(i),        \
+                     simdmodels_w_, sizeof(simdmodels_w_));                \
+    simdmodels_a_;                                                         \
+  })
+
 #if defined(__aarch64__)
 
 #if defined(__ARM_FEATURE_CRC32) && defined(__ARM_FEATURE_AES)

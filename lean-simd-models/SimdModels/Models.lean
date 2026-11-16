@@ -192,6 +192,51 @@ def loadU64LE (a : @& ByteArray) (i : USize) (hs : a.size < USize.size)
     (a.uget (i + 3) (by omega)) (a.uget (i + 4) (by omega)) (a.uget (i + 5) (by omega))
     (a.uget (i + 6) (by omega)) (a.uget (i + 7) (by omega))
 
+/-! ### In-place little-endian 64-bit stores into a byte array
+
+The models say only what the bytes of the result are: the array with the bytes
+at `[i, i + 8)` (or `[i, i + 32)`) replaced by the little-endian bytes of the
+stored words. Whether the runtime writes in place or into a copy is invisible
+to them. The bounds hypotheses are what make the compiled stores memory-safe. -/
+
+/-- The eight bytes of a 64-bit word, least significant first. -/
+def leBytes (v : UInt64) : List UInt8 :=
+  [v.toUInt8, (v >>> 8).toUInt8, (v >>> 16).toUInt8, (v >>> 24).toUInt8,
+   (v >>> 32).toUInt8, (v >>> 40).toUInt8, (v >>> 48).toUInt8, (v >>> 56).toUInt8]
+
+/-- `a` with the bytes at `[i, i + bs.length)` replaced by `bs`. -/
+def storeBytes (a : ByteArray) (i : Nat) (bs : List UInt8) : ByteArray :=
+  ⟨(a.data.toList.take i ++ bs ++ a.data.toList.drop (i + bs.length)).toArray⟩
+
+/-- Unaligned little-endian 64-bit store at byte offset `i` (`STR Xt` / `MOV m64, r64`). -/
+def storeU64LE (a : ByteArray) (i : USize) (v : UInt64) (_h : i.toNat + 8 ≤ a.size) : ByteArray :=
+  storeBytes a i.toNat (leBytes v)
+
+/-- Four consecutive unaligned little-endian 64-bit stores starting at byte offset `i`. -/
+def storeU64x4LE (a : ByteArray) (i : USize) (v0 v1 v2 v3 : UInt64)
+    (_h : i.toNat + 32 ≤ a.size) : ByteArray :=
+  storeBytes a i.toNat (leBytes v0 ++ leBytes v1 ++ leBytes v2 ++ leBytes v3)
+
+theorem length_leBytes (v : UInt64) : (leBytes v).length = 8 := rfl
+
+theorem size_storeBytes (a : ByteArray) (i : Nat) (bs : List UInt8) (h : i + bs.length ≤ a.size) :
+    (storeBytes a i bs).size = a.size := by
+  have hl : a.data.toList.length = a.size := by rw [Array.length_toList, ByteArray.size_data]
+  show (List.toArray (a.data.toList.take i ++ bs ++ a.data.toList.drop (i + bs.length))).size = a.size
+  rw [List.size_toArray, List.length_append, List.length_append, List.length_take,
+    List.length_drop, hl]
+  omega
+
+theorem size_storeU64LE (a : ByteArray) (i : USize) (v : UInt64) (h : i.toNat + 8 ≤ a.size) :
+    (storeU64LE a i v h).size = a.size :=
+  size_storeBytes a i.toNat (leBytes v) h
+
+theorem size_storeU64x4LE (a : ByteArray) (i : USize) (v0 v1 v2 v3 : UInt64)
+    (h : i.toNat + 32 ≤ a.size) : (storeU64x4LE a i v0 v1 v2 v3 h).size = a.size :=
+  size_storeBytes a i.toNat _ (by
+    rw [List.length_append, List.length_append, List.length_append, length_leBytes,
+      length_leBytes, length_leBytes, length_leBytes]; exact h)
+
 /-- Unaligned 128-bit vector load (`LDR Qt` / `vld1q_u8` / `_mm_loadu_si128`),
 modeled as the pair of adjacent unaligned little-endian 64-bit loads. -/
 def vld1q (a : @& ByteArray) (i : USize) (hs : a.size < USize.size)

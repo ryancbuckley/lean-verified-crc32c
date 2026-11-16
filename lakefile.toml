@@ -29,3 +29,8 @@ moreLeancArgs = ["-include", "lean-simd-models/c/simd_shim.h"]
 name = "bench_memcpy"
 root = "tests.BenchMemcpy"
 moreLeancArgs = ["-include", "lean-simd-models/c/simd_shim.h"]
+
+[[lean_exe]]
+name = "bench_xor"
+root = "tests.BenchXor"
+moreLeancArgs = ["-include", "lean-simd-models/c/simd_shim.h"]
