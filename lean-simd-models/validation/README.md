@@ -15,6 +15,16 @@ testing on hardware.
 | `clmulHi` | pass | pass under Rosetta only | Arm: pass (ASLp). Intel: partial (proven equal to a hand transcription of the SDM) |
 | `loadU8` | pass | pass under Rosetta only | Raw byte load (`SIMDMODELS_SARRAY_BYTES`) + `loadU8_eq_uget` kernel proof |
 | `loadU64LE` | pass | pass under Rosetta only | Little-endian `memcpy` + `V128.lane8_vld1q` kernel proof |
+| `storeU64LE` | pass (against its model, `bench_xor`) | not run | Little-endian `memcpy` after `lean_sarray_ensure_exclusive`; no instruction-level cross-check |
+| `storeU64x4LE` | pass (against its model, `bench_xor`) | not run | As `storeU64LE`, four words |
+
+The two store bindings are different in kind from the others: they are not one
+instruction but a runtime call (`lean_sarray_ensure_exclusive`, which copies a
+shared array) followed by a `memcpy`. `tests/BenchXor.lean` (`bench_xor`)
+compares each with its model on 1,544 cases, on unshared arrays (written in
+place) and shared ones (written to a copy), and checks that a shared array is
+left untouched. What stays trusted is that the runtime's uniqueness test is
+right, which every in-place `Array`/`ByteArray` update in Lean also relies on.
 
 ## AArch64 hardware differential test
 

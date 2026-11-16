@@ -28,11 +28,12 @@ Every CRC path—from a pure-register portable fallback to a 6-stream hardware `
     $$Z_{209}(X) = X^{209} + X^{144} + X^{54} + X^{39} + X^{14} + 1$$
     which cancels each 64-bit word and re-injects five shifted XORs across a 4-word register window. By Frobenius invariance, $Z_{209}(X^{64})$ (`13,376` bits) is likewise the unique minimal 64-bit word-aligned multiple with $< 8$ terms (`zero6_word64_minimal`, `zero6_word64_unique`).
   - **Other Chorba & Koopman regimes:** unique minimal `< 4`-term (`2`-term) multiple $X^{2^{31}-1} + 1$ (`zero2_minimal` / `zero2_unique`); unique minimal `< 6`-term (`4`-term) multiple $X^{5275} + X^{4508} + X^{2751} + 1$ (`zero4_5275_minimal` / `zero4_5275_unique`); unique minimal `< 8`-term multiple with leading gap $\ge 128$ (128-bit folding) $X^{290} + X^{136} + X^{113} + X^{107} + X^{32} + 1$ (`zero6_290_minimal` / `zero6_290_unique`); and unique minimal `< 10`-term (`8`-term) multiple $X^{79} + X^{75} + X^{71} + X^{58} + X^{18} + X^{12} + X + 1$ (`zero8_79_minimal` / `zero8_79_unique`).
-- **Three-tier register pipeline (zero scratch RAM, zero heap allocation):**
+- **Four tiers by input size:**
   - `< 40 B`: packed 8 KiB `ByteArray` slicing-by-8 (`sliceLoop`).
   - `40 B .. 2 KiB`: single-stream `fold209` reduction.
-  - `≥ 2 KiB`: 4-stream interleaved `fold209_4x` holding all 16 pending `UInt64` words in GP registers, combined via an 8 KiB precomputed shift table (`x64ShiftBytes`) and unrolled modular multiplication.
-- **Throughput.** On Apple M4, `extendPortable` beats C slicing-by-8 at every size (`1.07×` at 16 B to `5.1×` at 1–64 MiB), reaching **11.4–11.5 GB/s** CRC-only—~97% of single-stream hardware `CRC32CX` throughput using plain integer registers. This is still `0.42–0.48×` `absl::MemcpyCrc32c` in the copy benchmark below, short of the project's goal of staying within `1.5×` of Abseil on the portable path. The 4-stream kernel leans on the M4's wide core; expect a smaller gain over slicing-by-8 on narrower cores.
+  - `2 KiB .. 16 KiB`: 4-stream interleaved `fold209_4x` holding all 16 pending `UInt64` words in GP registers, combined via an 8 KiB precomputed shift table (`x64ShiftBytes`) and unrolled modular multiplication.
+  - `≥ 16 KiB`: the scratch-buffer kernel `rawExtendXor` (`Impl/PortableXor.lean`, proven in `PortableXor.lean` as `rawExtendXor_eq`). It reduces by the word-aligned $Z_{209}(X^{64})$, so each word is cancelled by XORing it, unshifted, into the words 65, 155, 170, 195 and 209 positions later: `v[j] = in[j] ^ v[j-65] ^ v[j-155] ^ v[j-170] ^ v[j-195] ^ v[j-209]`. The last 209 values live in an 18 KiB scratch `ByteArray` updated in place, four words per store. The first three tiers use no scratch memory and do not allocate; this one allocates the scratch array once per call.
+- **Throughput.** On Apple M4, CRC-only, `extendPortable` beats C slicing-by-8 at every size (`1.07×` at 16 B, `4.4×` at 4 KiB, `11.4×` at 1 MiB), reaching **22.0 GB/s at 64 KiB and 25.6–26.5 GB/s from 1 MiB up** with plain integer registers and one scratch buffer. In the copy benchmark below, `MemcpyCrc32cPortable` is `0.84–0.89×` `absl::MemcpyCrc32c` at 64 KiB–1 MiB and `0.78×` at 64 MiB, inside the project's goal of staying within `1.5×` of Abseil on the portable path; below 16 KiB it is `0.32–0.58×`, where the goal is still not met. The scratch-buffer kernel's speed comes from wide out-of-order execution of independent XORs; expect a smaller gain on narrower cores.
 
 ### 3. Validated SIMD/CRC Model Library & Hybrid Hardware Kernel (`lean-simd-models/`, `MemcpyCrc32c/HwKernel.lean`)
 - **`lean-simd-models` package.** Standalone Lake package giving pure Lean models, `V128` (`BitVec 128`) views, and $\mathbb{F}_2[X]$ theorems for reflected `CRC32C` (`8/16/32/64`-bit) and `64×64 -> 128` carry-less multiplication (`PMULL` / `PCLMULQDQ`).
@@ -52,26 +53,26 @@ Every CRC path—from a pure-register portable fallback to a 6-stream hardware `
   - **106,000,000 `libFuzzer` + ASan + UBSan executions per path** (`cxx/fuzz.cc`, with Lean runtime assertions enabled, exact heap redzones, trailing sentinels, and threshold neighborhood sniping) against `absl::ExtendCrc32c` with **zero** mismatches or sanitizer findings.
 
 ### 5. Performance on Apple M4 (`bench/full_bench.cc`, `reports/bench_apple_m4_copy_summary.csv`)
-Measured against upstream `abseil-cpp` (`CMake Release`, `-O3 -DNDEBUG`) linked into the same process, 15 interleaved rounds rotating contender order, GB/s median: This table is from a rerun with the verified copy routines in place (`reports/bench_apple_m4_copy_*.csv`). The CRC-only figures quoted elsewhere in this README are from the earlier run (`reports/bench_apple_m4_summary.csv`); between the two sessions Abseil's own results moved by up to 19% at 64 KiB and above, so compare ratios within a run, not absolute numbers across runs.
+Measured against upstream `abseil-cpp` (`CMake Release`, `-O3 -DNDEBUG`) linked into the same process, 15 interleaved rounds rotating contender order, GB/s median: This table is from a rerun with the verified copy routines and the scratch-buffer portable kernel in place (`reports/bench_apple_m4_copy_*.csv`). The CRC-only figures quoted elsewhere in this README are from the earlier run (`reports/bench_apple_m4_summary.csv`); between the two sessions Abseil's own results moved by up to 19% at 64 KiB and above, so compare ratios within a run, not absolute numbers across runs.
 
 | Size | `absl::MemcpyCrc32c` | **Lean `MemcpyCrc32c`** | Ratio vs Abseil | Lean `MemcpyCrc32cPortable` | C `slice8` + `memcpy` | Plain `memcpy` |
 | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| **16 B** (warm) | 3.70 (4.3 ns) | **4.20 (3.8 ns)** | **1.13×** | 2.10 | 2.06 | 5.72 |
-| **64 B** (warm) | 8.78 (7.3 ns) | **8.76 (7.3 ns)** | **1.00×** | 2.78 | 2.19 | 27.98 |
-| **256 B** (warm) | 13.37 | **13.38** | **1.00×** | 5.74 | 2.23 | 59.22 |
-| **1 KiB** (warm) | 18.64 | **22.74** | **1.22×** (unaligned: **1.37×**) | 6.73 | 2.22 | 97.64 |
-| **4 KiB** (warm) | 20.33 | **31.24** | **1.54×** (unaligned: **1.55×**) | 9.07 | 2.21 | 103.01 |
-| **64 KiB** (warm) | 23.60 | **38.41** | **1.63×** | 10.93 | 2.44 | 67.19 |
-| **1 MiB** (warm) | 23.59 | **33.96** | **1.44×** | 10.55 | 2.42 | 84.46 |
-| **64 MiB** (warm) | 23.54 | **26.42** | **1.12×** | 9.59 | 2.34 | 47.77 |
-| **64 MiB** (cold) | 23.46 | **25.08** | **1.07×** | 9.33 | 2.31 | 43.76 |
+| **16 B** (warm) | 3.70 (4.3 ns) | **4.19 (3.8 ns)** | **1.13×** | 2.13 | 2.06 | 5.72 |
+| **64 B** (warm) | 8.80 (7.3 ns) | **8.84 (7.2 ns)** | **1.00×** | 2.78 | 2.20 | 27.98 |
+| **256 B** (warm) | 13.36 | **13.43** | **1.00×** | 5.72 | 2.21 | 53.62 |
+| **1 KiB** (warm) | 18.62 | **22.47** | **1.21×** (unaligned: **1.41×**) | 6.67 | 2.23 | 94.81 |
+| **4 KiB** (warm) | 20.17 | **31.41** | **1.56×** (unaligned: **1.59×**) | 9.08 | 2.19 | 102.54 |
+| **64 KiB** (warm) | 21.79 | **34.39** | **1.58×** | 18.23 | 2.20 | 64.15 |
+| **1 MiB** (warm) | 21.41 | **32.31** | **1.51×** | 19.12 | 2.19 | 81.75 |
+| **64 MiB** (warm) | 21.76 | **25.96** | **1.19×** | 16.88 | 2.20 | 47.20 |
+| **64 MiB** (cold) | 21.46 | **24.16** | **1.13×** | 16.16 | 2.17 | 42.70 |
 
 How to read this table:
 
-- **Effect of the verified copy routines.** Against the earlier run with the inlined C++ small copy and the system `memcpy`, the ratio to Abseil moved from `1.21×` to `1.13×` at 16 B (`3.6` to `3.8 ns`: the small copy is now a tail call), from `1.52×` to `1.44×` at 1 MiB, and by `0.03` or less at the other aligned sizes. CRC-only ratios, whose code did not change, moved by up to `0.1` between the same two sessions, so only the 16 B change is clearly more than run-to-run variation.
-- **The copy win comes from strategy, not from a faster CRC.** On the M4, `absl::MemcpyCrc32c` runs at 20–24 GB/s while `absl::ExtendCrc32c` alone reaches about 69 GB/s at 64 KiB–1 MiB, so Abseil's fused routine is the slow one here. Plain `memcpy` followed by `absl::ComputeCrc32c` (the `memcpy_plus_absl_compute` rows in the CSV) reaches 32–38 GB/s at 4 KiB–1 MiB, within about 10% of the Lean routine in either direction. Abseil's fused path was tuned for x86-64 servers; do not expect the `1.5×` to carry over there.
+- **Effect of the verified copy routines.** Against the earlier run with the inlined C++ small copy and the system `memcpy`, the ratio to Abseil moved from `1.21×` to `1.13×` at 16 B (`3.6` to `3.8 ns`: the small copy is now a tail call) and stayed within `0.03` at every other aligned size in this run. CRC-only ratios, whose code did not change, moved by up to `0.1` between sessions, so only the 16 B change is clearly more than run-to-run variation.
+- **The copy win comes from strategy, not from a faster CRC.** On the M4, `absl::MemcpyCrc32c` runs at 20–22 GB/s while `absl::ExtendCrc32c` alone reaches 61–64 GB/s at 64 KiB–1 MiB, so Abseil's fused routine is the slow one here. Plain `memcpy` followed by `absl::ComputeCrc32c` (the `memcpy_plus_absl_compute` rows in the CSV) reaches 29–35 GB/s at 4 KiB–1 MiB, within about 15% of the Lean routine in either direction. Abseil's fused path was tuned for x86-64 servers; do not expect the `1.5×` to carry over there.
 - **The CRC kernel itself is 10–15% behind Abseil's at 64 KiB and above** (see the CRC-only figures below). That gap is the honest measure of the kernel and is still open.
-- **Cold-cache and unaligned results are weaker in places.** Cold at 1 MiB the Lean routine is `0.97×` Abseil and at 64 KiB `1.09×`; warm unaligned at 256 B it is `0.96–0.98×`. At 16 B unaligned, Abseil's own result is unstable between runs (2.4 and 3.1 GB/s medians in the two sessions), so no ratio is quoted for it. The full set is in `reports/bench_apple_m4_copy_summary.csv`.
+- **Cold-cache results are weaker in places.** Cold at 1 MiB the Lean routine is `0.95×` Abseil (at 64 KiB `1.14×`); warm unaligned at 256 B it is `0.99–1.02×`. At 16 B unaligned, Abseil's own result is unstable between runs, so no ratio is quoted for it. The full set is in `reports/bench_apple_m4_copy_summary.csv`.
 
 For CRC-only (`ExtendCrc32c`), the out-of-line verified Lean function runs at **6.30 GB/s (`2.54 ns`)** at 16 B (`0.90×` Abseil's header-inlined fast path—within ~1 clock cycle across a C ABI call) and **56.1 GB/s** at 1 MiB (`0.90×` `absl::ExtendCrc32c`).
 
@@ -92,9 +93,9 @@ For the Apple M4 build, all **7 functions (`1,137` 32-bit instruction words)** r
 
 `scripts/check_trusted.sh` scans every `.lean` file (after stripping comments and string literals) and rejects any `sorry`, `admit`, `axiom`, `unsafe`, `implemented_by`, `csimp`, `native_decide`, or `@[extern]` outside `SimdModels/Trusted.lean`. `bv_decide` is permitted only inside a directory named `BvDecide/` (the agreed quarantine policy); no such directory exists, so none is used.
 
-- **Source-level theorems (`MemcpyCrc32c/Axioms.lean`, 102 theorems, enforced via `#guard_msgs`):**
+- **Source-level theorems (`MemcpyCrc32c/Axioms.lean`, 103 theorems, enforced via `#guard_msgs`):**
   1. Lean 4.35.0's kernel and Mathlib's polynomial definitions (`[propext, Classical.choice, Quot.sound]`).
-  2. For native execution: Lean's C codegen, Clang, and the 9 `@[extern]` bindings in `SimdModels/Trusted.lean` (`crc32c_u8/16/32/64`, `clmulLo/Hi`, `loadU8`, `loadU64LE`, `cpuHasCrcClmul`), plus the ~295-line C++ wrapper `cxx/leancrc32c.cc`.
+  2. For native execution: Lean's C codegen, Clang, and the 11 `@[extern]` bindings in `SimdModels/Trusted.lean` (`crc32c_u8/16/32/64`, `clmulLo/Hi`, `loadU8`, `loadU64LE`, the in-place stores `storeU64LE` and `storeU64x4LE` used only by the portable scratch-buffer kernel, and `cpuHasCrcClmul`), plus the ~295-line C++ wrapper `cxx/leancrc32c.cc`.
 - **AArch64 machine-code theorems (`MemcpyCrc32c/Arm64.lean`, hardware CRC call graph on this binary):**
   - **Removed from TCB:** Lean's compiler (`leanc`), `clang -O2`, and all C-shim instruction/load bindings (`crc32c_*`, `clmul*`, `loadU8`, `loadU64LE`).
   - **Remaining in TCB:** Lean's kernel, the A64 operational model (`SimdModels/Arm64.lean`, validated by testing against Arm's ASL, not proven: two random states per compiled instruction word plus edge-case families), the Mach-O byte-audit script (`scripts/check_aarch64_mc.py`), the loader/module-init assumption (`CodeLoaded` / `GlobalsLoaded`: the constants are written at run time by Lean's unverified module initializer, and no Lean term shows the assumptions are satisfiable for a concrete memory image), and the outer C++ wrapper (`cxx/leancrc32c.cc`: dispatch, copy, and entry register contract).
@@ -168,8 +169,8 @@ Everything above has been tuned and hardware-tested on **Apple M4 (macOS / AArch
 9. **Close the CRC-kernel gap to Abseil on large buffers.**
    CRC-only throughput is `0.85–0.90×` `absl::ExtendCrc32c` from 64 KiB up on the M4. This gap exists independently of the copy and is the first thing to investigate when retuning stream counts.
 
-10. **Portable throughput gap (`~10 GB/s` vs `~15 GB/s`); the `1.5×` goal is not met.**
-   Closing the remaining large-buffer gap on hardware-less targets would use Chorba's word-aligned $Z(X^{64})$ scratch-buffer reduction (`~15 GB/s` in `bench/proto.c`), which requires adding a verified mutable 64-bit word-buffer primitive.
+10. **Portable path below 16 KiB.**
+   The scratch-buffer kernel closed the large-buffer gap (see section 2), but it has a fixed cost (allocating and seeding the scratch array, and a 209-word tail through the single-stream kernel) that makes it slower than the register kernels below about 12 KiB. From 40 B to 16 KiB the portable path is still `0.3–0.45×` `absl::MemcpyCrc32c`. A smaller history window is not available: 209 words is forced by the degree of the minimal 6-term zero polynomial (`zero6_209_minimal`).
 
 ---
 
@@ -184,10 +185,11 @@ MemcpyCrc32c/
   ZeroPoly.lean, Word64.lean  # Certified CRC32C zero polynomials & 64-bit word lemmas
   ZeroPolyMinimal.lean, ZeroMin/ # Minimality & uniqueness for weights <4, <6, <8 (deg 209, 290, word64), <10
   ErrorDetection.lean         # Odd-error, 32-bit burst & Castagnoli/Koopman HD=4,6,8,10 theorems
-  Portable.lean               # Equivalence proof for 3-tier Chorba portable kernel
+  Portable.lean               # Equivalence proofs for the register Chorba kernels
+  PortableXor.lean            # Scratch-buffer Z(X^64) kernel proof & the portable path's top-level theorems
   Hw.lean, HwKernel.lean      # Equivalence proof for 3-regime CRC32C + CLMUL kernel
   Memcpy.lean, Dispatch.lean  # Copy-and-CRC & opaque runtime CPU-dispatch proofs
-  CApi.lean, Axioms.lean      # C-ABI entry-point theorems & #guard_msgs axiom audit (102 theorems)
+  CApi.lean, Axioms.lean      # C-ABI entry-point theorems & #guard_msgs axiom audit (103 theorems)
   Impl/                       # Mathlib-free executable Lean implementations
   Arm64.lean, Arm64/          # AArch64 binary machine-code proofs (7 functions, 1,137 insns)
 lean-simd-models/

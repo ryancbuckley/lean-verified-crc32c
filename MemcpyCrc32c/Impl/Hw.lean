@@ -23,6 +23,7 @@ hardware CRC or carry-less-multiply instructions. Callers must dispatch to
 `extendHw` / `rawExtendHw` only on CPUs that support the instructions.
 -/
 import MemcpyCrc32c.Impl.HwCombine
+import MemcpyCrc32c.Impl.PortableXor
 
 namespace Crc32c
 open SimdModels (crc32c_u8 crc32c_u16 crc32c_u32 crc32c_u64 clmulLo clmulHi loadU8 loadU64LE)

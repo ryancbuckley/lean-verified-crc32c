@@ -8,6 +8,7 @@ Kernel-only proofs. They reason about the Lean models of the seven bindings
 with the models is the audited trust boundary (`SimdModels.Trusted`).
 -/
 import MemcpyCrc32c.Hw
+import MemcpyCrc32c.PortableXor
 import MemcpyCrc32c.Impl.Hw
 
 namespace Crc32c

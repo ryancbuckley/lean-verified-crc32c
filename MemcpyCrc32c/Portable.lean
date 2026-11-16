@@ -677,11 +677,11 @@ theorem fold209_4x_entry (s : UInt32) (a : ByteArray) (hs : a.size < USize.size)
 
 /-! ### `fast_eq_ref` for the portable path -/
 
-theorem rawExtendPortableUSize_eq (s : UInt32) (a : ByteArray) (hs : a.size < USize.size)
+theorem rawExtendPortableReg_eq (s : UInt32) (a : ByteArray) (hs : a.size < USize.size)
     (uoff ulen : USize) (h : uoff.toNat + ulen.toNat ≤ a.size) :
-    rawExtendPortableUSize s a hs uoff ulen h =
+    rawExtendPortableReg s a hs uoff ulen h =
       rawExtend s (bytes a uoff.toNat (uoff.toNat + ulen.toNat)) := by
-  unfold rawExtendPortableUSize rawExtendPortable4x
+  unfold rawExtendPortableReg rawExtendPortable4x
   have hpow : 2 ^ System.Platform.numBits = USize.size := rfl
   have hfin : (uoff + ulen).toNat = uoff.toNat + ulen.toNat := by
     rw [USize.toNat_add]; exact Nat.mod_eq_of_lt (by omega)
@@ -736,31 +736,5 @@ theorem rawExtendPortableUSize_eq (s : UInt32) (a : ByteArray) (hs : a.size < US
       ring
     · simp only [h40, ↓reduceDIte]
       rw [sliceLoop_eq a hs _ _ _ _ _ _ rfl, hfin]
-
-/-- The portable path computes the reference update on any in-bounds range. -/
-theorem rawExtendPortable_eq (s : UInt32) (a : ByteArray) (off len : Nat)
-    (h : off + len ≤ a.size) :
-    rawExtendPortable s a off len h = rawExtend s (bytes a off (off + len)) := by
-  unfold rawExtendPortable rawExtendPortableCold
-  by_cases hsmall : a.size ≤ 0x7FFFFFFF
-  · have hs : a.size < USize.size := by have := usize_size_gt; omega
-    have ho : off.toUSize.toNat = off := USize.toNat_ofNat_of_lt' (by omega)
-    have hl : len.toUSize.toNat = len := USize.toNat_ofNat_of_lt' (by omega)
-    simp only [hsmall, ↓reduceDIte, rawExtendPortableUSize_eq, ho, hl]
-  · simp only [hsmall, ↓reduceDIte]
-    by_cases hs : a.size < USize.size
-    · have ho : off.toUSize.toNat = off := USize.toNat_ofNat_of_lt' (by omega)
-      have hl : len.toUSize.toNat = len := USize.toNat_ofNat_of_lt' (by omega)
-      simp only [hs, ↓reduceDIte, rawExtendPortableUSize_eq, ho, hl]
-    · simp only [hs, ↓reduceDIte, bytes_extract]
-
-/-- `fast_eq_ref`, portable path: equal to the bitwise reference on every input. -/
-theorem extendPortable_eq_extend (c : UInt32) (a : ByteArray) : extendPortable c a = extend c a := by
-  simp [extendPortable, extend, rawExtendPortable_eq, bytes_whole]
-
-/-- The portable path satisfies the polynomial spec. -/
-theorem extendPortable_eq_spec (c : UInt32) (a : ByteArray) :
-    extendPortable c a = Spec.extend c a := by
-  rw [extendPortable_eq_extend, extend_eq_spec]
 
 end Crc32c

@@ -4,6 +4,7 @@ Quick agreement and throughput check of the scratch-buffer portable kernel
 Usage: bench_xor
 -/
 import MemcpyCrc32c.Impl.PortableXor
+import MemcpyCrc32c.Impl.Reference
 
 open Crc32c
 
@@ -22,9 +23,50 @@ def viaXor (s : UInt32) (a : ByteArray) (off len : Nat) : UInt32 :=
   else 0xDEADBEEF
 
 def viaReg (s : UInt32) (a : ByteArray) (off len : Nat) : UInt32 :=
-  if h : off + len ≤ a.size then rawExtendPortable s a off len h else 0xDEADBEEF
+  if h : a.size < USize.size ∧ off.toUSize.toNat + len.toUSize.toNat ≤ a.size then
+    rawExtendPortableReg s a h.1 off.toUSize len.toUSize h.2
+  else 0xDEADBEEF
+
+/-- Differential check of the two trusted store bindings against their models,
+on an unshared array (stored in place) and a shared one (stored into a copy,
+leaving the original untouched). -/
+def storeDiff : IO Nat := do
+  let src := mkBuf 4096
+  let mut x : UInt64 := 0x243F6A8885A308D3
+  let mut cases := 0
+  for size in [8, 9, 15, 16, 31, 32, 33, 40, 63, 64, 65, 200] do
+    for i in [0:size] do
+      x := x ^^^ (x <<< 13); x := x ^^^ (x >>> 7); x := x ^^^ (x <<< 17)
+      let v0 := x; let v1 := x * 0x9E3779B97F4A7C15; let v2 := ~~~x; let v3 := x >>> 5
+      let shared := src.extract i (i + size)
+      let keep := shared.data.toList
+      if h : i.toUSize.toNat + 8 ≤ shared.size then
+        let want := SimdModels.Model.storeU64LE shared i.toUSize v0 h
+        let fresh := src.extract i (i + size)
+        if hf : i.toUSize.toNat + 8 ≤ fresh.size then
+          if (SimdModels.storeU64LE fresh i.toUSize v0 hf).data.toList != want.data.toList then
+            throw <| IO.userError s!"storeU64LE (in place) differs from its model: size={size} i={i}"
+        if (SimdModels.storeU64LE shared i.toUSize v0 h).data.toList != want.data.toList then
+          throw <| IO.userError s!"storeU64LE (copy) differs from its model: size={size} i={i}"
+        cases := cases + 2
+      if h : i.toUSize.toNat + 32 ≤ shared.size then
+        let want := SimdModels.Model.storeU64x4LE shared i.toUSize v0 v1 v2 v3 h
+        let fresh := src.extract i (i + size)
+        if hf : i.toUSize.toNat + 32 ≤ fresh.size then
+          if (SimdModels.storeU64x4LE fresh i.toUSize v0 v1 v2 v3 hf).data.toList
+              != want.data.toList then
+            throw <| IO.userError s!"storeU64x4LE (in place) differs from its model: size={size} i={i}"
+        if (SimdModels.storeU64x4LE shared i.toUSize v0 v1 v2 v3 h).data.toList
+            != want.data.toList then
+          throw <| IO.userError s!"storeU64x4LE (copy) differs from its model: size={size} i={i}"
+        cases := cases + 2
+      if shared.data.toList != keep then
+        throw <| IO.userError s!"a store modified a shared array: size={size} i={i}"
+  return cases
 
 def main : IO Unit := do
+  let sc ← storeDiff
+  IO.println s!"store bindings agree with their models on {sc} cases; shared arrays untouched"
   let big := mkBuf ((1 <<< 20) + 64)
   let mut cases := 0
   -- every length across the first few chunk boundaries, then scattered large lengths

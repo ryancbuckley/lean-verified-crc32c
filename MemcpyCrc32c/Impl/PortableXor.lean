@@ -19,7 +19,7 @@ loops update in place through `storeU64LE` / `storeU64x4LE`:
 After each chunk its last 212 words are moved to the front. The final 209 input
 words cannot be cancelled this way (their re-injections would land past the end
 of the input); they are combined with the pending re-injections in place and
-handed to the proven register kernel `rawExtendPortableUSize`.
+handed to the proven register kernel `rawExtendPortableReg`.
 -/
 import MemcpyCrc32c.Impl.Portable
 
@@ -176,9 +176,11 @@ def xorChunks (a : @& ByteArray) (hs : a.size < USize.size) (buf : ByteArray) (q
     let b2 := moveHist b1.1 (8 * chunkWords rem) 0 b1.2 (by omega) (by simp) (by simp)
     xorChunks a hs b2.1 (q + 8 * chunkWords rem) (rem - chunkWords rem) b2.2 (by omega)
 termination_by rem.toNat
-decreasing_by
-  have hk := chunkWords_spec rem h0
-  omega
+decreasing_by omega
+
+/-- `x ^^^ w` if `c`, else `x`. The tail loop's re-injections that are still
+pending for a given word. -/
+@[inline] def condXor (c : Bool) (x w : UInt64) : UInt64 := if c then x ^^^ w else x
 
 /-- The last 209 input words, each with its pending re-injections, written in
 place over scratch words `[0, 209)`. `o` is the byte offset of the current word. -/
@@ -200,11 +202,10 @@ def xorTail (a : @& ByteArray) (hs : a.size < USize.size) (buf : ByteArray) (q o
     have e1176 : (o + 1176).toNat = o.toNat + 1176 := usize_add_toNat o 1176 (by omega)
     have eo : (o + 8).toNat = o.toNat + 8 := usize_add_toNat o 8 (by omega)
     have eq : (q + 8).toNat = q.toNat + 8 := usize_add_toNat q 8 (by omega)
-    let x := load64 a q hs (by omega) ^^^ loadU64LE buf (o + 24) hbs (by omega)
-    let x := if o < 1560 then x ^^^ loadU64LE buf (o + 136) hbs (by omega) else x
-    let x := if o < 1360 then x ^^^ loadU64LE buf (o + 336) hbs (by omega) else x
-    let x := if o < 1240 then x ^^^ loadU64LE buf (o + 456) hbs (by omega) else x
-    let x := if o < 520 then x ^^^ loadU64LE buf (o + 1176) hbs (by omega) else x
+    let x := condXor (o < 520) (condXor (o < 1240) (condXor (o < 1360) (condXor (o < 1560)
+      (load64 a q hs (by omega) ^^^ loadU64LE buf (o + 24) hbs (by omega))
+      (loadU64LE buf (o + 136) hbs (by omega))) (loadU64LE buf (o + 336) hbs (by omega)))
+      (loadU64LE buf (o + 456) hbs (by omega))) (loadU64LE buf (o + 1176) hbs (by omega))
     xorTail a hs (storeU64LE buf o x (by omega)) (q + 8) (o + 8)
       (by rw [storeU64LE, Model.size_storeU64LE]; exact hb) (by omega) (by omega) (by omega)
   else ⟨buf, hb⟩
@@ -244,7 +245,50 @@ def rawExtendXor (s : UInt32) (a : @& ByteArray) (hs : a.size < USize.size) (uof
   let b1 := xorChunks a hs b0 uoff body hb0 (by omega)
   let b2 := xorTail a hs b1.1 (uoff + 8 * body) 0 b1.2 (by omega) (by simp) (by omega)
   have hb2s : b2.1.size < USize.size := by have := b2.2; omega
-  let c := rawExtendPortableUSize 0 b2.1 hb2s 0 1672 (by have := b2.2; omega)
+  let c := rawExtendPortableReg 0 b2.1 hb2s 0 1672 (by have := b2.2; omega)
   bytesLoop a (uoff + 8 * nw) (uoff + ulen) (by omega) c
+
+/-- Unconditioned CRC32C state update over `a[uoff, uoff + ulen)`, once
+`a.size < USize.size` is established: the scratch-buffer kernel from 16 KiB up
+(where it is faster on the machines measured), the register kernels below. -/
+@[inline] def rawExtendPortableUSize (s : UInt32) (a : @& ByteArray) (hs : a.size < USize.size)
+    (uoff ulen : USize) (h : uoff.toNat + ulen.toNat ≤ a.size) : UInt32 :=
+  if hx : 16384 ≤ ulen then
+    rawExtendXor s a hs uoff ulen h (by
+      have := USize.le_iff_toNat_le.mp hx
+      have e : (16384 : USize).toNat = 16384 := by simp
+      omega)
+  else rawExtendPortableReg s a hs uoff ulen h
+
+/-- Cold path for buffers larger than 2 GiB (`a.size > 0x7FFFFFFF`). Outlined so
+the hot `≤ 2 GiB` fast path in `rawExtendPortable` / `extendPortable` has zero
+callee-saved register spills across `USize.size` / `ByteArray.extract` calls. -/
+@[noinline] def rawExtendPortableCold (s : UInt32) (a : @& ByteArray) (off len : @& Nat)
+    (h : off + len ≤ a.size) : UInt32 :=
+  if hs : a.size < USize.size then
+    have ho : off.toUSize.toNat = off := USize.toNat_ofNat_of_lt' (by omega)
+    have hl : len.toUSize.toNat = len := USize.toNat_ofNat_of_lt' (by omega)
+    rawExtendPortableUSize s a hs off.toUSize len.toUSize (by omega)
+  else
+    -- Unreachable on any real platform: byte arrays are smaller than the address space.
+    rawExtend s ((a.extract off (off + len)).data.toList)
+
+/-- Unconditioned CRC32C state update over `a[off, off + len)`, portable path.
+Checks `a.size ≤ 0x7FFFFFFF` first as an immediate scalar comparison (avoiding
+both `lean_obj_once` and GMP `lean_nat_big_lt` on `USize.size = 2^64`), while
+still handling ≥ 2 GiB buffers on 64-bit platforms via `rawExtendPortableCold`. -/
+@[inline] def rawExtendPortable (s : UInt32) (a : @& ByteArray) (off len : @& Nat)
+    (h : off + len ≤ a.size) : UInt32 :=
+  if hsmall : a.size ≤ 0x7FFFFFFF then
+    have hs : a.size < USize.size := by have := usize_size_gt; omega
+    have ho : off.toUSize.toNat = off := USize.toNat_ofNat_of_lt' (by omega)
+    have hl : len.toUSize.toNat = len := USize.toNat_ofNat_of_lt' (by omega)
+    rawExtendPortableUSize s a hs off.toUSize len.toUSize (by omega)
+  else
+    rawExtendPortableCold s a off len h
+
+/-- `absl::ExtendCrc32c`, portable path. -/
+def extendPortable (c : UInt32) (a : @& ByteArray) : UInt32 :=
+  rawExtendPortable (c ^^^ 0xFFFFFFFF) a 0 a.size (by omega) ^^^ 0xFFFFFFFF
 
 end Crc32c

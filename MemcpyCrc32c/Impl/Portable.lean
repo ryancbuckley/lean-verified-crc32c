@@ -402,8 +402,10 @@ decreasing_by omega
     s.toUInt64 0 0 0  0 0 0 0  0 0 0 0  0 0 0 0
   sliceLoop a hs (uoff + L4) (uoff + ulen) (by omega) (by omega) s4
 
-/-- Fast unboxed `USize` entry once `a.size < USize.size` is established. -/
-@[inline] def rawExtendPortableUSize (s : UInt32) (a : @& ByteArray) (hs : a.size < USize.size)
+/-- The register kernels (4-stream, single-stream, slicing-by-8) by input size,
+once `a.size < USize.size` is established. `rawExtendPortableUSize` in
+`Impl.PortableXor` adds the scratch-buffer kernel in front for large inputs. -/
+@[inline] def rawExtendPortableReg (s : UInt32) (a : @& ByteArray) (hs : a.size < USize.size)
     (uoff ulen : USize) (h : uoff.toNat + ulen.toNat ≤ a.size) : UInt32 :=
   have hpow : 2 ^ System.Platform.numBits = USize.size := rfl
   have hfin : (uoff + ulen).toNat = uoff.toNat + ulen.toNat := by
@@ -428,36 +430,5 @@ decreasing_by omega
       (by omega) (by omega) (by omega) (by omega) s.toUInt64 0 0 0
   else
     sliceLoop a hs uoff (uoff + ulen) (by omega) (by omega) s
-
-/-- Cold path for buffers larger than 2 GiB (`a.size > 0x7FFFFFFF`). Outlined so
-the hot `≤ 2 GiB` fast path in `rawExtendPortable` / `extendPortable` has zero
-callee-saved register spills across `USize.size` / `ByteArray.extract` calls. -/
-@[noinline] def rawExtendPortableCold (s : UInt32) (a : @& ByteArray) (off len : @& Nat)
-    (h : off + len ≤ a.size) : UInt32 :=
-  if hs : a.size < USize.size then
-    have ho : off.toUSize.toNat = off := USize.toNat_ofNat_of_lt' (by omega)
-    have hl : len.toUSize.toNat = len := USize.toNat_ofNat_of_lt' (by omega)
-    rawExtendPortableUSize s a hs off.toUSize len.toUSize (by omega)
-  else
-    -- Unreachable on any real platform: byte arrays are smaller than the address space.
-    rawExtend s ((a.extract off (off + len)).data.toList)
-
-/-- Unconditioned CRC32C state update over `a[off, off + len)`, portable path.
-Checks `a.size ≤ 0x7FFFFFFF` first as an immediate scalar comparison (avoiding
-both `lean_obj_once` and GMP `lean_nat_big_lt` on `USize.size = 2^64`), while
-still handling ≥ 2 GiB buffers on 64-bit platforms via `rawExtendPortableCold`. -/
-@[inline] def rawExtendPortable (s : UInt32) (a : @& ByteArray) (off len : @& Nat)
-    (h : off + len ≤ a.size) : UInt32 :=
-  if hsmall : a.size ≤ 0x7FFFFFFF then
-    have hs : a.size < USize.size := by have := usize_size_gt; omega
-    have ho : off.toUSize.toNat = off := USize.toNat_ofNat_of_lt' (by omega)
-    have hl : len.toUSize.toNat = len := USize.toNat_ofNat_of_lt' (by omega)
-    rawExtendPortableUSize s a hs off.toUSize len.toUSize (by omega)
-  else
-    rawExtendPortableCold s a off len h
-
-/-- `absl::ExtendCrc32c`, portable path. -/
-def extendPortable (c : UInt32) (a : @& ByteArray) : UInt32 :=
-  rawExtendPortable (c ^^^ 0xFFFFFFFF) a 0 a.size (by omega) ^^^ 0xFFFFFFFF
 
 end Crc32c

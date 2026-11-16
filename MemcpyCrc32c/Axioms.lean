@@ -148,6 +148,8 @@ open Crc32c
 #guard_msgs in #print axioms extendPortable_eq_extend
 /-- info: 'Crc32c.extendPortable_eq_spec' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in #print axioms extendPortable_eq_spec
+/-- info: 'Crc32c.rawExtendXor_eq' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in #print axioms rawExtendXor_eq
 
 -- Phase 3: instruction-model semantics, V128 views, Intel SDM equivalence, and link to reference.
 /-- info: 'SimdModels.crc32c_spec' depends on axioms: [propext, Classical.choice, Quot.sound] -/

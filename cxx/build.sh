@@ -33,7 +33,7 @@ compile_c() { # $1 = generated C file, $2 = extra ISA flags
   OBJS+=("$o")
 }
 
-for m in Reference Arith Portable Memcpy Dispatch CApi; do
+for m in Reference Arith Portable PortableXor Memcpy Dispatch CApi; do
   compile_c ".lake/build/ir/MemcpyCrc32c/Impl/$m.c" ""
 done
 compile_c ".lake/build/ir/MemcpyCrc32c/Impl/HwCombine.c" "$HWCOMBINE_ISA_FLAGS"
