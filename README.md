@@ -51,26 +51,27 @@ Every CRC path—from a pure-register portable fallback to a 6-stream hardware `
   - `9,051` `PROT_NONE` guard-page boundary tests at alignments `0..7` (both with and without `-DNDEBUG`).
   - **106,000,000 `libFuzzer` + ASan + UBSan executions per path** (`cxx/fuzz.cc`, with Lean runtime assertions enabled, exact heap redzones, trailing sentinels, and threshold neighborhood sniping) against `absl::ExtendCrc32c` with **zero** mismatches or sanitizer findings.
 
-### 5. Performance on Apple M4 (`bench/full_bench.cc`, `reports/bench_apple_m4_summary.csv`)
-Measured against upstream `abseil-cpp` (`CMake Release`, `-O3 -DNDEBUG`) linked into the same process, 15 interleaved rounds rotating contender order, GB/s median:
+### 5. Performance on Apple M4 (`bench/full_bench.cc`, `reports/bench_apple_m4_copy_summary.csv`)
+Measured against upstream `abseil-cpp` (`CMake Release`, `-O3 -DNDEBUG`) linked into the same process, 15 interleaved rounds rotating contender order, GB/s median: This table is from a rerun with the verified copy routines in place (`reports/bench_apple_m4_copy_*.csv`). The CRC-only figures quoted elsewhere in this README are from the earlier run (`reports/bench_apple_m4_summary.csv`); between the two sessions Abseil's own results moved by up to 19% at 64 KiB and above, so compare ratios within a run, not absolute numbers across runs.
 
 | Size | `absl::MemcpyCrc32c` | **Lean `MemcpyCrc32c`** | Ratio vs Abseil | Lean `MemcpyCrc32cPortable` | C `slice8` + `memcpy` | Plain `memcpy` |
 | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| **16 B** (warm) | 3.70 (4.3 ns) | **4.50 (3.6 ns)** | **1.21×** (unaligned: **1.43×**) | 2.13 | 2.07 | 5.72 |
-| **64 B** (warm) | 8.79 (7.3 ns) | **8.99 (7.1 ns)** | **1.02×** | 2.98 | 2.20 | 27.98 |
-| **256 B** (warm) | 13.42 | **13.42** | **1.00×** | 5.80 | 2.21 | 46.67 |
-| **1 KiB** (warm) | 18.61 | **22.81** | **1.23×** (unaligned: **1.43×**) | 6.73 | 2.21 | 94.87 |
-| **4 KiB** (warm) | 19.93 | **30.77** | **1.54×** (unaligned: **1.63×**) | 8.87 | 2.13 | 102.67 |
-| **64 KiB** (warm) | 19.83 | **32.10** | **1.62×** | 9.12 | 2.08 | 65.29 |
-| **1 MiB** (warm) | 20.71 | **31.53** | **1.52×** | 9.87 | 2.15 | 79.79 |
-| **64 MiB** (warm) | 20.94 | **23.94** | **1.14×** | 8.81 | 2.13 | 43.59 |
-| **64 MiB** (cold) | 20.78 | **21.64** | **1.04×** | 8.81 | 2.09 | 39.27 |
+| **16 B** (warm) | 3.70 (4.3 ns) | **4.20 (3.8 ns)** | **1.13×** | 2.10 | 2.06 | 5.72 |
+| **64 B** (warm) | 8.78 (7.3 ns) | **8.76 (7.3 ns)** | **1.00×** | 2.78 | 2.19 | 27.98 |
+| **256 B** (warm) | 13.37 | **13.38** | **1.00×** | 5.74 | 2.23 | 59.22 |
+| **1 KiB** (warm) | 18.64 | **22.74** | **1.22×** (unaligned: **1.37×**) | 6.73 | 2.22 | 97.64 |
+| **4 KiB** (warm) | 20.33 | **31.24** | **1.54×** (unaligned: **1.55×**) | 9.07 | 2.21 | 103.01 |
+| **64 KiB** (warm) | 23.60 | **38.41** | **1.63×** | 10.93 | 2.44 | 67.19 |
+| **1 MiB** (warm) | 23.59 | **33.96** | **1.44×** | 10.55 | 2.42 | 84.46 |
+| **64 MiB** (warm) | 23.54 | **26.42** | **1.12×** | 9.59 | 2.34 | 47.77 |
+| **64 MiB** (cold) | 23.46 | **25.08** | **1.07×** | 9.33 | 2.31 | 43.76 |
 
 How to read this table:
 
-- **The copy win comes from strategy, not from a faster CRC.** On the M4, `absl::MemcpyCrc32c` runs at about 20 GB/s while `absl::ExtendCrc32c` alone runs at about 62 GB/s, so Abseil's fused routine is the slow one here. Plain `memcpy` followed by `absl::ComputeCrc32c` (the `memcpy_plus_absl_compute` rows in the CSV) reaches 32–34 GB/s at 4 KiB–1 MiB, level with or slightly ahead of the Lean routine. Abseil's fused path was tuned for x86-64 servers; do not expect the `1.5×` to carry over there.
+- **Effect of the verified copy routines.** Against the earlier run with the inlined C++ small copy and the system `memcpy`, the ratio to Abseil moved from `1.21×` to `1.13×` at 16 B (`3.6` to `3.8 ns`: the small copy is now a tail call), from `1.52×` to `1.44×` at 1 MiB, and by `0.03` or less at the other aligned sizes. CRC-only ratios, whose code did not change, moved by up to `0.1` between the same two sessions, so only the 16 B change is clearly more than run-to-run variation.
+- **The copy win comes from strategy, not from a faster CRC.** On the M4, `absl::MemcpyCrc32c` runs at 20–24 GB/s while `absl::ExtendCrc32c` alone reaches about 69 GB/s at 64 KiB–1 MiB, so Abseil's fused routine is the slow one here. Plain `memcpy` followed by `absl::ComputeCrc32c` (the `memcpy_plus_absl_compute` rows in the CSV) reaches 32–38 GB/s at 4 KiB–1 MiB, within about 10% of the Lean routine in either direction. Abseil's fused path was tuned for x86-64 servers; do not expect the `1.5×` to carry over there.
 - **The CRC kernel itself is 10–15% behind Abseil's at 64 KiB and above** (see the CRC-only figures below). That gap is the honest measure of the kernel and is still open.
-- **Cold-cache and unaligned results are weaker in places.** Cold at 1 MiB the Lean routine is `0.96×` Abseil and at 64 KiB `1.06×`; warm unaligned at 256 B it is `0.91×`. The full set is in `reports/bench_apple_m4_summary.csv`.
+- **Cold-cache and unaligned results are weaker in places.** Cold at 1 MiB the Lean routine is `0.97×` Abseil and at 64 KiB `1.09×`; warm unaligned at 256 B it is `0.96–0.98×`. At 16 B unaligned, Abseil's own result is unstable between runs (2.4 and 3.1 GB/s medians in the two sessions), so no ratio is quoted for it. The full set is in `reports/bench_apple_m4_copy_summary.csv`.
 
 For CRC-only (`ExtendCrc32c`), the out-of-line verified Lean function runs at **6.30 GB/s (`2.54 ns`)** at 16 B (`0.90×` Abseil's header-inlined fast path—within ~1 clock cycle across a C ABI call) and **56.1 GB/s** at 1 MiB (`0.90×` `absl::ExtendCrc32c`).
 
