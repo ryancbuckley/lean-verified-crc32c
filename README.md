@@ -87,6 +87,16 @@ For the Apple M4 build, all **7 functions (`1,137` 32-bit instruction words)** r
 - **Which binary.** The CRC proofs are about the objects produced by `cxx/build.sh` (system `clang -O2` on the Lean-generated C), not the executables `lake` links with Lean's bundled clang; the copy proofs are about the assembled `.S`, so they do not depend on a compiler. Together they cover the hardware CRC path and the copy: not the portable path, the dispatch, or the C++ wrapper that calls them. There is no single theorem yet that composes the copy and CRC proofs into a statement about the whole call.
 - **Binary & ISA validation.** `SimdModels/Arm64.lean` is checked against ASLp across `3,017` full-state vectors covering `996` distinct instruction words (including all `873` distinct words in the 7 functions), and `scripts/check_aarch64_mc.sh` checks byte-for-byte agreement between `Arm64/Code.lean` and the `.o` objects, `libleancrc32c.a`, and linked Mach-O binary (including 7 branch relocations and 20 GOT pairs with Apple `ld` `adrp+ldr -> adrp+add` relaxation).
 
+### 7. Verified Reed–Solomon Erasure Coding (`ReedSolomon/`, `cxx/leanrs.h`)
+A second library on the same foundations: Reed–Solomon over GF(2^8) (field polynomial `0x11D`). A stripe of `k` data shards is extended to `k + m`; any `k` shards give back the rest. Shard `p` is the value at the point `p` of the polynomial of degree `< k` through the data, one polynomial per byte position. The single operation is interpolation, "shards at these `k` points → shards at those `r` points", which is both encoding and reconstruction.
+- **The scheme (`ReedSolomon/Spec.lean`, over any field).** Systematic (`shardAt_node`); any `k` distinct shards determine every shard (`shardAt_reconstruct`, `data_reconstruct`); two different stripes agree in fewer than `k` shards, so the code is MDS (`card_agree_lt`); each shard is the Lagrange combination implementations compute (`shardAt_eq_sum`).
+- **The field (`ReedSolomon/Field.lean`).** `X^8 + X^4 + X^3 + X^2 + 1` is irreducible (Bézout certificates against `X^16 + X` and `X^8 + X`), and the byte code `gfMul` / `gfInv` (`ReedSolomon/Impl/Gf.lean`) is the field's multiplication and inversion under the bit-to-coefficient map `ofByte`.
+- **The tables (`ReedSolomon/Tables.lean`).** `lagrange` computes the spec's Lagrange coefficient (`ofByte_lagrange`), and `tables xs ys` holds, for each coefficient, its products with every low and every high nibble, in the layout the kernel reads (`tables_isTable`).
+- **The kernel, at machine-code level (`ReedSolomon/Arm64/`, `cxx/leanrs_apply_arm64.S`, 117 instructions).** `leanrs_apply` computes each 16-byte product with two `TBL` lookups and an `EOR3`, two output rows × 64 bytes per pass. `apply_mc_spec` proves that from any state satisfying the memory contract (table, pointer arrays and inputs readable; outputs writable and overlapping nothing the routine reads or each other), execution returns with every output byte equal to the GF(2^8) dot product of its matrix row with the input bytes at that position, nothing else in memory changed, and callee-saved registers preserved. `apply_mc_rs` composes this with the table proofs: run on `tables xs ys`, output shard `j` is exactly `shardAt (pts xs) … (ys[j])`. The four new instructions (`TBL`, `AND`, `USHR`, `MOVI` on `.16B`) were added to `SimdModels/Arm64.lean` and checked against Arm's ASL through ASLp (1,279 full-state vectors, no mismatch).
+- **C library (`cxx/leanrs.h`, `cxx/build_rs.sh` → `build/cxx/libleanrs.a`).** `leanrs_prepare` builds the table with the proven Lean code; `leanrs_run` checks arguments (including every overlap the proof forbids), runs the verified kernel on AArch64 CPUs with `FEAT_SHA3` (probed at run time), zero-pads shards shorter than 64 bytes, and otherwise falls back to a portable Lean kernel (carry-less multiply, or bytewise without it). `cxx/test_rs.c` checks 1,062 configurations through the public API against an independent log-table Lagrange evaluator, with three random erasure-and-reconstruction rounds each, on both paths.
+- **Performance on the M4 (GB/s of data, 4 KiB–1 MiB shards).** Verified kernel: `10+4` 14.5–15.8, `4+2` 31.6–31.9, `17+3` 14.7–19.5, `12+8` 7.0–7.9. Portable path: 1.2–5.8. A plain C implementation of the same split-nibble technique compiled with `clang -O3` measured 15–17 GB/s for `10+4`, so the hand-written kernel is roughly at parity with what a compiler produces; it has not been compared with ISA-L or klauspost. `leanrs_prepare` takes 3.6 µs (`4+2`) to 53 µs (`12+8`), so callers should keep tables for fixed erasure patterns.
+- **Not proven.** The C wrapper (argument checks, padding, dispatch, the `FEAT_SHA3` probe) and the portable Lean kernel `ReedSolomon/Impl/Kernel.lean`, which is tested against the scalar code and the reference.
+
 ---
 
 ## Trusted Computing Base
@@ -96,6 +106,7 @@ For the Apple M4 build, all **7 functions (`1,137` 32-bit instruction words)** r
 - **Source-level theorems (`MemcpyCrc32c/Axioms.lean`, 103 theorems, enforced via `#guard_msgs`):**
   1. Lean 4.35.0's kernel and Mathlib's polynomial definitions (`[propext, Classical.choice, Quot.sound]`).
   2. For native execution: Lean's C codegen, Clang, and the 11 `@[extern]` bindings in `SimdModels/Trusted.lean` (`crc32c_u8/16/32/64`, `clmulLo/Hi`, `loadU8`, `loadU64LE`, the in-place stores `storeU64LE` and `storeU64x4LE` used only by the portable scratch-buffer kernel, and `cpuHasCrcClmul`), plus the ~295-line C++ wrapper `cxx/leancrc32c.cc`.
+- **Reed–Solomon (`ReedSolomon/Arm64.lean`, `#guard_msgs` audit of `apply_mc_spec`, `apply_mc_shards`, `apply_mc_rs`, `ofByte_lagrange`, `tables_isTable`):** Lean's kernel, Mathlib, the A64 model (now including `TBL`, `AND`, `USHR`, `MOVI`, ASLp-validated), `scripts/check_aarch64_rs_mc.py` (object bytes = proven words), and the unproven C wrapper `cxx/leanrs.cc`. The tables are computed by compiled Lean code, so on the C library's path Lean's compiler and clang are trusted for `leanrs_prepare`, though not for the kernel. No new `@[extern]` bindings.
 - **AArch64 machine-code theorems (`MemcpyCrc32c/Arm64.lean`, hardware CRC call graph on this binary):**
   - **Removed from TCB:** Lean's compiler (`leanc`), `clang -O2`, and all C-shim instruction/load bindings (`crc32c_*`, `clmul*`, `loadU8`, `loadU64LE`).
   - **Remaining in TCB:** Lean's kernel, the A64 operational model (`SimdModels/Arm64.lean`, validated by testing against Arm's ASL, not proven: two random states per compiled instruction word plus edge-case families), the Mach-O byte-audit script (`scripts/check_aarch64_mc.py`), the loader/module-init assumption (`CodeLoaded` / `GlobalsLoaded`: the constants are written at run time by Lean's unverified module initializer, and no Lean term shows the assumptions are satisfiable for a concrete memory image), and the outer C++ wrapper (`cxx/leancrc32c.cc`: dispatch, copy, and entry register contract).
@@ -172,6 +183,8 @@ Everything above has been tuned and hardware-tested on **Apple M4 (macOS / AArch
 10. **Portable path below 16 KiB.**
    The scratch-buffer kernel closed the large-buffer gap (see section 2), but it has a fixed cost (allocating and seeding the scratch array, and a 209-word tail through the single-stream kernel) that makes it slower than the register kernels below about 12 KiB. From 40 B to 16 KiB the portable path is still `0.3–0.45×` `absl::MemcpyCrc32c`. A smaller history window is not available: 209 words is forced by the degree of the minimal 6-term zero polynomial (`zero6_209_minimal`).
 
+11. **Reed–Solomon follow-ups.** Prove the portable Lean kernel; prove the wrapper's padding of short shards (it relies on the kernel working byte position by byte position, which `apply_mc_spec` states but the wrapper does not use formally); compare with ISA-L; and decide whether an x86-64 kernel (`PSHUFB`, `VPSHUFB`, or `GF2P8AFFINEQB`) is worth a model and a proof.
+
 ---
 
 ## Repository Layout
@@ -192,11 +205,16 @@ MemcpyCrc32c/
   CApi.lean, Axioms.lean      # C-ABI entry-point theorems & #guard_msgs axiom audit (103 theorems)
   Impl/                       # Mathlib-free executable Lean implementations
   Arm64.lean, Arm64/          # AArch64 binary machine-code proofs (7 functions, 1,137 insns)
+ReedSolomon/
+  Spec.lean                   # Reed–Solomon over any field: systematic, reconstruction, MDS
+  Field.lean, Tables.lean     # GF(2^8) = GF(2)[X]/(0x11D); byte arithmetic, coefficients & tables proven
+  Impl/                       # Mathlib-free executable code: field, tables, portable kernel
+  Arm64.lean, Arm64/          # Machine-code proof of leanrs_apply (117 insns) & end-to-end theorem
 lean-simd-models/
   SimdModels/                 # V128 & scalar CRC/CLMUL models, GF(2)[X] specs, Intel SDM & A64 ISA
   c/simd_shim.h               # Target-guarded C intrinsics & alignment-safe byte/word loads
   tests/, validation/         # ASLp vectors, hardware differential tests & Rosetta cross-check
-cxx/                          # C11/C++17 static library (leancrc32c.h/.cc), tests & libFuzzer
+cxx/                          # C11/C++17 libraries (leancrc32c.h/.cc, leanrs.h/.cc), assembly, tests & libFuzzer
 bench/                        # Full CMake-Abseil benchmark suite & C prototypes
 scripts/                      # TCB scanner, C-IR call-graph audit, Mach-O binary byte checker
 reports/                      # Detailed development notes & raw Apple M4 benchmark CSVs
@@ -226,6 +244,13 @@ lake build MemcpyCrc32c.Arm64
 ./scripts/check_aarch64_mc.sh
 (cd lean-simd-models && lake exe asl_arm64_check < validation/asl_vectors_arm64.txt)
 (cd lean-simd-models && lake exe asl_arm64_check < validation/asl_vectors_arm64_copy.txt)
+
+# 6. Reed–Solomon: machine-code proof, object audit (in step 5's script) & C library test
+lake build ReedSolomon.Arm64
+(cd lean-simd-models && lake exe asl_arm64_check < validation/asl_vectors_arm64_rs.txt)
+./cxx/build_rs.sh
+clang -std=c11 -O2 -Icxx cxx/test_rs.c $(cat build/cxx/LINK_FLAGS_RS) -lc++ -o build/cxx/test_rs
+build/cxx/test_rs
 ```
 
 ### Requirements and caveats

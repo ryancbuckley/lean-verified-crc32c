@@ -1,6 +1,6 @@
 name = "leancrc32c"
 version = "0.1.0"
-defaultTargets = ["MemcpyCrc32c"]
+defaultTargets = ["MemcpyCrc32c", "ReedSolomon"]
 
 [[require]]
 name = "mathlib"
@@ -33,4 +33,13 @@ moreLeancArgs = ["-include", "lean-simd-models/c/simd_shim.h"]
 [[lean_exe]]
 name = "bench_xor"
 root = "tests.BenchXor"
+moreLeancArgs = ["-include", "lean-simd-models/c/simd_shim.h"]
+
+[[lean_lib]]
+name = "ReedSolomon"
+moreLeancArgs = ["-include", "lean-simd-models/c/simd_shim.h"]
+
+[[lean_exe]]
+name = "bench_rs"
+root = "tests.BenchRs"
 moreLeancArgs = ["-include", "lean-simd-models/c/simd_shim.h"]

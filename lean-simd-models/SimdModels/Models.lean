@@ -192,6 +192,33 @@ def loadU64LE (a : @& ByteArray) (i : USize) (hs : a.size < USize.size)
     (a.uget (i + 3) (by omega)) (a.uget (i + 4) (by omega)) (a.uget (i + 5) (by omega))
     (a.uget (i + 6) (by omega)) (a.uget (i + 7) (by omega))
 
+/-! ### Byte-lane vector operations (Arm Neon `AND`, `USHR`, `TBL`, `MOVI` on `.16B`)
+
+Written lane by lane, as the Arm ASL does (`Elem[operand, e, 8]`). -/
+
+/-- The vector whose 8-bit lane `i` is `f i`. -/
+def ofLanes8 (f : Fin 16 → UInt8) : V128 :=
+  V128.ofHalves (word64 (f 0) (f 1) (f 2) (f 3) (f 4) (f 5) (f 6) (f 7))
+    (word64 (f 8) (f 9) (f 10) (f 11) (f 12) (f 13) (f 14) (f 15))
+
+/-- `AND v.16b` / `vandq_u8` / `_mm_and_si128`. -/
+def vandq (a b : V128) : V128 := a &&& b
+
+/-- `USHR v.16b, #n` / `vshrq_n_u8`, for `1 ≤ n ≤ 8`: logical right shift of
+each 8-bit lane (`n = 8` gives zero). -/
+def vshrq_n_u8 (a : V128) (n : Nat) : V128 :=
+  ofLanes8 fun i => if n < 8 then V128.lane8 a i >>> n.toUInt8 else 0
+
+/-- `TBL v.16b, {t.16b}, idx.16b` / `vqtbl1q_u8`: lane `i` of the result is lane
+`idx[i]` of the one-register table `t`, or zero if `idx[i] ≥ 16`. -/
+def vqtbl1q_u8 (t idx : V128) : V128 :=
+  ofLanes8 fun i =>
+    let j := (V128.lane8 idx i).toNat
+    if h : j < 16 then V128.lane8 t ⟨j, h⟩ else 0
+
+/-- `MOVI v.16b, #imm` / `vdupq_n_u8`: every 8-bit lane is `imm`. -/
+def vdupq_n_u8 (imm : UInt8) : V128 := ofLanes8 fun _ => imm
+
 /-! ### In-place little-endian 64-bit stores into a byte array
 
 The models say only what the bytes of the result are: the array with the bytes

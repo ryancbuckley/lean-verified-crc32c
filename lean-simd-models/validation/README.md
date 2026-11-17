@@ -138,6 +138,15 @@ Phase 7 theorems and checked against Arm's ASL the same way as the bindings.
   Stores are compared on the words around the target address, not on the
   whole RAM window.
 
+- Reed–Solomon kernel (`asl_vectors_arm64_rs.txt`): 1,279 vectors over 272
+  distinct words, no mismatch. They cover every word of `leanrs_apply`
+  (`cxx/leanrs_apply_arm64.S`) and edge-case families for the four
+  byte-lane instructions added for it: `TBL Vd.16B, {Vn.16B}, Vm.16B` with
+  index bytes in range, just out of range (16–31) and arbitrary, including
+  `Vd`/`Vn`/`Vm` aliasing and `V31`; `AND .16B`; `USHR .16B` for every shift
+  1–8 on edge patterns; and `MOVI .16B` for twelve immediates. The model
+  writes these lane by lane, as the ASL does (`ofLanes8`).
+
 Limits: two random states per compiled word is a smoke test of each encoding,
 not exhaustive coverage of its data path; the edge-case families carry most
 of the weight. Instructions outside this set decode to `none`, so a proof

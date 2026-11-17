@@ -456,6 +456,14 @@ inductive Instr where
   | eor3_16B (rd rn rm ra : RegIdx)
   | ext16B (rd rn rm : RegIdx) (imm4 : Fin 16)
   | zip2_2D (rd rn rm : RegIdx)
+  /-- `AND Vd.16B, Vn.16B, Vm.16B`. -/
+  | andVec16B (rd rn rm : RegIdx)
+  /-- `USHR Vd.16B, Vn.16B, #shift` (`1 ≤ shift ≤ 8`). -/
+  | ushr16B (rd rn : RegIdx) (shift : Nat)
+  /-- `TBL Vd.16B, {Vn.16B}, Vm.16B` (one-register table). -/
+  | tbl1_16B (rd rn rm : RegIdx)
+  /-- `MOVI Vd.16B, #imm8`. -/
+  | movi16B (rd : RegIdx) (imm8 : UInt8)
   deriving DecidableEq, Repr
 
 /-! ### Bit-exact 32-bit A64 binary decoder -/
@@ -681,6 +689,16 @@ def decode (w : UInt32) : Option Instr :=
     some (.ext16B rd rn rm imm4)
   else if (w &&& 0xFFE0FC00) == 0x4EC07800 then
     some (.zip2_2D rd rn rm)
+  -- 20. Byte-lane vector operations on `.16B` (AND, TBL with one table register,
+  -- USHR with byte lanes, MOVI with an 8-bit immediate replicated to every byte)
+  else if (w &&& 0xFFE0FC00) == 0x4E201C00 then
+    some (.andVec16B rd rn rm)
+  else if (w &&& 0xFFE0FC00) == 0x4E000000 then
+    some (.tbl1_16B rd rn rm)
+  else if (w &&& 0xFFF8FC00) == 0x6F080400 then
+    some (.ushr16B rd rn (8 - ((w >>> 16) &&& 0x7).toNat))
+  else if (w &&& 0xFFF8FC00) == 0x4F00E400 then
+    some (.movi16B rd ((((w >>> 16) &&& 0x7) <<< 5) ||| ((w >>> 5) &&& 0x1F)).toUInt8)
   else
     none
 
@@ -993,6 +1011,14 @@ def execInstr (s : ArmState) (ins : Instr) : Option ArmState :=
     some (s.setV rd (Model.vextq (s.getV rn) (s.getV rm) imm4)).nextPC
   | .zip2_2D rd rn rm =>
     some (s.setV rd (zip2_2d (s.getV rn) (s.getV rm))).nextPC
+  | .andVec16B rd rn rm =>
+    some (s.setV rd (Model.vandq (s.getV rn) (s.getV rm))).nextPC
+  | .ushr16B rd rn shift =>
+    some (s.setV rd (Model.vshrq_n_u8 (s.getV rn) shift)).nextPC
+  | .tbl1_16B rd rn rm =>
+    some (s.setV rd (Model.vqtbl1q_u8 (s.getV rn) (s.getV rm))).nextPC
+  | .movi16B rd imm8 =>
+    some (s.setV rd (Model.vdupq_n_u8 imm8)).nextPC
 
 /-- Fetch the 32-bit instruction word at `s.pc` from `code`, decode it, and
 execute one architectural step. -/

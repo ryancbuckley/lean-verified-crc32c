@@ -13,7 +13,8 @@ a 384-byte RAM window [0x20000, 0x20180)) for:
      signed/unsigned AddWithCarry boundaries, DecodeBitMasks element sizes,
      W-register and D/8B-register upper-half zeroing, INS lane preservation,
      SP vs XZR/WZR, V31, pre/post/signed-offset LDP/STP, LDR/STR, CRC32C,
-     PMULL, EOR3, EXT, ZIP2).
+     PMULL, EOR3, EXT, ZIP2), and the byte-lane vector operations TBL, AND,
+     USHR and MOVI on .16B.
 
 Checked against SimdModels.Arm64.step by lean-simd-models/tests/AslArm64Check.lean.
 
@@ -324,6 +325,37 @@ def build_synthetic_suite(rng):
                 "x2": (rng.randrange(0, 16) * (2 if is_ldrh_reg else 1)) if (w & 0x3FE0FC00) == 0x38606800 else rand_val64(rng),
                 "v1": rng.getrandbits(128), "v2": rng.getrandbits(128),
             }))
+
+    # 20. Byte-lane vector operations on .16B: TBL (one table register), AND, USHR, MOVI
+    def idx_vec():
+        # index bytes mostly in range (0..15), some just out of range, some arbitrary
+        bs = bytes(rng.choice([rng.randrange(16), rng.randrange(16), rng.randrange(16, 32),
+                               rng.randrange(256), rng.choice([15, 16, 0x80, 0xFF])])
+                   for _ in range(16))
+        return int.from_bytes(bs, "little")
+    for wd in [0x4E020020,   # tbl v0.16b, {v1.16b}, v2.16b
+               0x4E010021,   # tbl v1.16b, {v1.16b}, v1.16b
+               0x4E0203E0,   # tbl v0.16b, {v31.16b}, v2.16b
+               0x4E1F003F]:  # tbl v31.16b, {v1.16b}, v31.16b
+        for _ in range(24):
+            tests.append((wd, {"v0": rng.getrandbits(128), "v1": idx_vec() if wd == 0x4E010021
+                               else rng.getrandbits(128), "v2": idx_vec(), "v31": idx_vec()}))
+    for wd in [0x4E221C20,   # and v0.16b, v1.16b, v2.16b
+               0x4E211C21,   # and v1.16b, v1.16b, v1.16b
+               0x4E3F1C5F]:  # and v31.16b, v2.16b, v31.16b
+        for _ in range(8):
+            tests.append((wd, {"v0": rng.getrandbits(128), "v1": rng.getrandbits(128),
+                               "v2": rng.getrandbits(128), "v31": rng.getrandbits(128)}))
+    for sh in range(1, 9):
+        for wd in [0x6F000420 | ((16 - sh) << 16),    # ushr v0.16b, v1.16b, #sh
+                   0x6F0007FF | ((16 - sh) << 16)]:   # ushr v31.16b, v31.16b, #sh
+            for v in [0, M128, 0x80808080808080808080808080808080,
+                      0x0102040810204080FF7F3F1F0F070301, rng.getrandbits(128), rng.getrandbits(128)]:
+                tests.append((wd, {"v0": rng.getrandbits(128), "v1": v, "v31": v}))
+    for imm in [0x00, 0x01, 0x0F, 0x10, 0x1F, 0x20, 0x55, 0x7F, 0x80, 0xAA, 0xE0, 0xFF]:
+        for rd in [0, 28, 31]:
+            tests.append((0x4F00E400 | ((imm >> 5) << 16) | ((imm & 0x1F) << 5) | rd,
+                          {f"v{rd}": rng.getrandbits(128)}))
 
     return tests
 
